@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class BeBodaApplication {
 
 	public static void main(String[] args) {
+
 		SpringApplication.run(BeBodaApplication.class, args);
 	}
 
