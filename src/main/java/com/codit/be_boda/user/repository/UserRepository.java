@@ -1,4 +1,4 @@
-package com.codit.be_boda.user.respository;
+package com.codit.be_boda.user.repository;
 
 import com.codit.be_boda.user.domain.User;
 import org.springframework.data.jpa.repository.JpaRepository;
