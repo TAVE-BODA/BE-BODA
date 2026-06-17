@@ -1,6 +1,7 @@
 package com.codit.be_boda.auth;
 
 //import com.codit.be_boda.auth.dto.KakaoTokenResponse;
+import com.codit.be_boda.auth.dto.KakaoLoginResult;
 import com.codit.be_boda.auth.service.KakaoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,7 +45,9 @@ public class KakaoController {
     @GetMapping("/callback")
     @ResponseBody
     public String callback(@RequestParam String code, HttpSession session) {
-        User user = kakaoService.loginOrCreateUser(code);
+
+        KakaoLoginResult result = kakaoService.loginOrCreateUser(code);
+        User user = result.getUser();
 
         LoginUser loginUser = new LoginUser(
                 user.getId(),
@@ -53,6 +56,7 @@ public class KakaoController {
         );
 
         session.setAttribute("loginUser", loginUser);
+        session.setAttribute("kakaoAccessToken", result.getAccessToken());
 
         return "로그인 성공! DB 저장 완료 + 세션 저장 완료<br>"
                 + "우리 서비스 user id: " + user.getId() + "<br>"
@@ -75,7 +79,15 @@ public class KakaoController {
     @GetMapping("/logout")
     @ResponseBody
     public String logout(HttpSession session) {
-        session.invalidate();
+        String accessToken = (String) session.getAttribute("kakaoAccessToken");
+
+        try {
+            if (accessToken != null) {
+                kakaoService.logout(accessToken);
+            }
+        } finally {
+            session.invalidate();
+        }
         return "로그아웃 완료";
     }
 }

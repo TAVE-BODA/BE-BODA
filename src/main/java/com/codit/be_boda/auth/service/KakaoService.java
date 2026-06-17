@@ -1,5 +1,6 @@
 package com.codit.be_boda.auth.service;
 
+import com.codit.be_boda.auth.dto.KakaoLoginResult;
 import com.codit.be_boda.auth.dto.KakaoTokenResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +13,7 @@ import com.codit.be_boda.auth.dto.KakaoUserResponse;
 import com.codit.be_boda.user.domain.User;
 import com.codit.be_boda.user.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
+import com.codit.be_boda.auth.dto.KakaoLoginResult;
 
 @Service
 @RequiredArgsConstructor
@@ -56,7 +58,7 @@ public class KakaoService {
     }
 
     @Transactional
-    public User loginOrCreateUser(String code) {
+    public KakaoLoginResult loginOrCreateUser(String code) {
         KakaoTokenResponse tokenResponse = getAccessToken(code);
 
         KakaoUserResponse kakaoUserResponse =
@@ -65,14 +67,24 @@ public class KakaoService {
         Long kakaoId = kakaoUserResponse.getId();
         String nickname = kakaoUserResponse.getNickname();
 
-        return userRepository.findByKakaoId(kakaoId)
-                .map(user -> {
-                    user.updateNickname(nickname);
-                    return user;
+        User user = userRepository.findByKakaoId(kakaoId)
+                .map(existingUser -> {
+                    existingUser.updateNickname(nickname);
+                    return existingUser;
                 })
                 .orElseGet(() -> userRepository.save(
                         User.createKakaoUser(kakaoId, nickname)
                 ));
+
+        return new KakaoLoginResult(user, tokenResponse.getAccessToken());
+    }
+
+    public void logout(String accessToken) {
+        restClient.post()
+                .uri("https://kapi.kakao.com/v1/user/logout")
+                .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .toBodilessEntity();
     }
 }
 
