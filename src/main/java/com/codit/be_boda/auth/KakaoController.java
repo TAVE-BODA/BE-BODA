@@ -1,6 +1,5 @@
 package com.codit.be_boda.auth;
 
-//import com.codit.be_boda.auth.dto.KakaoTokenResponse;
 import com.codit.be_boda.auth.dto.KakaoLoginResult;
 import com.codit.be_boda.auth.service.KakaoService;
 import lombok.RequiredArgsConstructor;
@@ -8,7 +7,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
-//import com.codit.be_boda.auth.dto.KakaoUserResponse;
 import com.codit.be_boda.user.domain.User;
 import org.springframework.web.bind.annotation.RequestParam;
 
