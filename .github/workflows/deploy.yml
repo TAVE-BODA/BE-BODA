@@ -49,13 +49,13 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
+            set -e
+
             cd /home/ubuntu/boda
 
-            sudo docker stop boda-backend || true
-            sudo docker rm boda-backend || true
-            sudo docker rmi boda-backend || true
-
             sudo docker build -t boda-backend .
+
+            sudo docker rm -f boda-backend || true
 
             sudo docker run -d \
               --name boda-backend \
@@ -63,4 +63,8 @@ jobs:
               -p 8080:8080 \
               boda-backend
 
-            sudo docker ps
+            sleep 10
+
+            sudo docker ps --filter "name=boda-backend" --filter "status=running" | grep boda-backend
+
+            curl -f http://localhost:8080 || true
