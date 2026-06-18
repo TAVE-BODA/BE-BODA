@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>내 보험 한눈에 — 보험생이</title>
+    <link rel="stylesheet" th:href="@{/css/main.css}">
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="logo"><a href="/">보험생이</a></div>
+        <nav><a href="/">← 챗봇으로 돌아가기</a></nav>
+    </div>
+</header>
+<div class="dashboard-wrap">
+    <div class="dashboard-header">
+        <h1 id="dashboard-title">내 보험 분석 결과</h1>
+        <p id="dashboard-sub">보험증권 기준으로 분석했어요</p>
+        <div id="dashboard-amount-badge" class="amount-badge hidden"></div>
+    </div>
+    <div id="loading-state" class="center-message">
+        <div class="spinner large"></div>
+        <p>보다가 열심히 읽고 있어요...</p>
+    </div>
+    <div id="no-terms-banner" class="warn-banner hidden">
+        ⚠️ 약관을 업로드하면 보장 상세 내역을 볼 수 있어요.
+        <a href="/">약관 업로드하러 가기 →</a>
+    </div>
+    <div id="card-grid" class="card-grid hidden"></div>
+    <div id="detail-panel" class="detail-panel hidden">
+        <button class="close-btn" onclick="closeDetail()">✕</button>
+        <div id="detail-content"></div>
+    </div>
+</div>
+<script th:src="@{/js/dashboard.js}"></script>
+</body>
+</html>
