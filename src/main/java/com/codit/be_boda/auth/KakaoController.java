@@ -41,7 +41,6 @@ public class KakaoController {
     }
 
     @GetMapping("/callback")
-    @ResponseBody
     public String callback(@RequestParam String code, HttpSession session) {
 
         KakaoLoginResult result = kakaoService.loginOrCreateUser(code);
@@ -56,10 +55,7 @@ public class KakaoController {
         session.setAttribute("loginUser", loginUser);
         session.setAttribute("kakaoAccessToken", result.getAccessToken());
 
-        return "로그인 성공! DB 저장 완료 + 세션 저장 완료<br>"
-                + "우리 서비스 user id: " + user.getId() + "<br>"
-                + "카카오 id: " + user.getKakaoId() + "<br>"
-                + "닉네임: " + user.getNickname();
+        return "redirect:http://localhost:5173/oauth/callback/kakao";
     }
 
     @GetMapping("/me")
