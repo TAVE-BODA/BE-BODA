@@ -16,6 +16,9 @@ import java.nio.charset.StandardCharsets;
 import com.codit.be_boda.auth.dto.LoginUser;
 import jakarta.servlet.http.HttpSession;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @Controller
 @RequiredArgsConstructor
 public class KakaoController {
@@ -60,15 +63,26 @@ public class KakaoController {
 
     @GetMapping("/me")
     @ResponseBody
-    public Object me(HttpSession session) {
-        Object loginUser = session.getAttribute("loginUser");
+    public Map<String, Object> me(HttpSession session) {
+        LoginUser loginUser = (LoginUser) session.getAttribute("loginUser");
+
+        Map<String, Object> response = new HashMap<>();
 
         if (loginUser == null) {
-            return "로그인하지 않은 사용자입니다.";
+            response.put("loggedIn", false);
+            response.put("message", "로그인하지 않은 사용자입니다.");
+            response.put("user", null);
+            return response;
         }
 
-        return loginUser;
+        response.put("loggedIn", true);
+        response.put("message", "로그인된 사용자입니다.");
+        response.put("user", loginUser);
+
+        return response;
     }
+
+
 
     @GetMapping("/logout")
     @ResponseBody
