@@ -56,8 +56,6 @@ public class KakaoController {
                 user.getProfileImageUrl()
         );
 
-
-
         session.setAttribute("loginUser", loginUser);
         session.setAttribute("kakaoAccessToken", result.getAccessToken());
 
@@ -81,7 +79,6 @@ public class KakaoController {
         response.put("loggedIn", true);
         response.put("message", "로그인된 사용자입니다.");
         response.put("user", loginUser);
-
         return response;
     }
 

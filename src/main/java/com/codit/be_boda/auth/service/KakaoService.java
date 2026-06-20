@@ -24,8 +24,6 @@ public class KakaoService {
     @Value("${kakao.redirect-uri}")
     private String redirectUri;
 
-    @Value("${kakao.client-secret}")
-    private String clientSecret;
 
     private final RestClient restClient = RestClient.create();
 
@@ -38,7 +36,6 @@ public class KakaoService {
         body.add("client_id", clientId);
         body.add("redirect_uri", redirectUri);
         body.add("code", code);
-        body.add("client_secret", clientSecret);
 
         return restClient.post()
                 .uri("https://kauth.kakao.com/oauth/token")
