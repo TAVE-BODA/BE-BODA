@@ -52,8 +52,11 @@ public class KakaoController {
         LoginUser loginUser = new LoginUser(
                 user.getId(),
                 user.getKakaoId(),
-                user.getNickname()
+                user.getNickname(),
+                user.getProfileImageUrl()
         );
+
+
 
         session.setAttribute("loginUser", loginUser);
         session.setAttribute("kakaoAccessToken", result.getAccessToken());

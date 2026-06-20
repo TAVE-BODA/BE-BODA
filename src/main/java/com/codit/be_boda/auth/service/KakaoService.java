@@ -13,7 +13,6 @@ import com.codit.be_boda.auth.dto.KakaoUserResponse;
 import com.codit.be_boda.user.domain.User;
 import com.codit.be_boda.user.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
-import com.codit.be_boda.auth.dto.KakaoLoginResult;
 
 @Service
 @RequiredArgsConstructor
@@ -66,16 +65,16 @@ public class KakaoService {
 
         Long kakaoId = kakaoUserResponse.getId();
         String nickname = kakaoUserResponse.getNickname();
+        String profileImageUrl = kakaoUserResponse.getProfileImageUrl();
 
         User user = userRepository.findByKakaoId(kakaoId)
                 .map(existingUser -> {
-                    existingUser.updateNickname(nickname);
+                    existingUser.updateProfile(nickname, profileImageUrl);
                     return existingUser;
                 })
                 .orElseGet(() -> userRepository.save(
-                        User.createKakaoUser(kakaoId, nickname)
+                        User.createKakaoUser(kakaoId, nickname, profileImageUrl)
                 ));
-
         return new KakaoLoginResult(user, tokenResponse.getAccessToken());
     }
 
