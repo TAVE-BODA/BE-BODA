@@ -13,7 +13,6 @@ import com.codit.be_boda.auth.dto.KakaoUserResponse;
 import com.codit.be_boda.user.domain.User;
 import com.codit.be_boda.user.repository.UserRepository;
 import org.springframework.transaction.annotation.Transactional;
-import com.codit.be_boda.auth.dto.KakaoLoginResult;
 
 @Service
 @RequiredArgsConstructor
@@ -25,8 +24,6 @@ public class KakaoService {
     @Value("${kakao.redirect-uri}")
     private String redirectUri;
 
-    @Value("${kakao.client-secret}")
-    private String clientSecret;
 
     private final RestClient restClient = RestClient.create();
 
@@ -39,7 +36,6 @@ public class KakaoService {
         body.add("client_id", clientId);
         body.add("redirect_uri", redirectUri);
         body.add("code", code);
-        body.add("client_secret", clientSecret);
 
         return restClient.post()
                 .uri("https://kauth.kakao.com/oauth/token")
@@ -66,16 +62,16 @@ public class KakaoService {
 
         Long kakaoId = kakaoUserResponse.getId();
         String nickname = kakaoUserResponse.getNickname();
+        String profileImageUrl = kakaoUserResponse.getProfileImageUrl();
 
         User user = userRepository.findByKakaoId(kakaoId)
                 .map(existingUser -> {
-                    existingUser.updateNickname(nickname);
+                    existingUser.updateProfile(nickname, profileImageUrl);
                     return existingUser;
                 })
                 .orElseGet(() -> userRepository.save(
-                        User.createKakaoUser(kakaoId, nickname)
+                        User.createKakaoUser(kakaoId, nickname, profileImageUrl)
                 ));
-
         return new KakaoLoginResult(user, tokenResponse.getAccessToken());
     }
 

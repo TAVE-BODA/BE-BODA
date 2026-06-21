@@ -5,6 +5,7 @@ import java.io.Serializable;
 public record LoginUser(
         Long id,
         Long kakaoId,
-        String nickname
+        String nickname,
+        String profileImageUrl
 ) implements Serializable {
 }

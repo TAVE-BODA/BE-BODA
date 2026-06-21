@@ -21,16 +21,24 @@ public class User {
     @Column(nullable = false)
     private String nickname;
 
-    private User(Long kakaoId, String nickname) {
+    private String profileImageUrl;
+
+    private User(Long kakaoId, String nickname, String profileImageUrl) {
         this.kakaoId = kakaoId;
         this.nickname = nickname;
+        this.profileImageUrl = profileImageUrl;
     }
 
-    public static User createKakaoUser(Long kakaoId, String nickname) {
-        return new User(kakaoId, nickname);
+    public static User createKakaoUser(
+            Long kakaoId,
+            String nickname,
+            String profileImageUrl
+    ) {
+        return new User(kakaoId, nickname, profileImageUrl);
     }
 
-    public void updateNickname(String nickname) {
+    public void updateProfile(String nickname, String profileImageUrl) {
         this.nickname = nickname;
+        this.profileImageUrl = profileImageUrl;
     }
 }
