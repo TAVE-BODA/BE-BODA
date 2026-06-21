@@ -2,20 +2,18 @@ package com.codit.be_boda.auth;
 
 import com.codit.be_boda.auth.dto.KakaoLoginResult;
 import com.codit.be_boda.auth.service.KakaoService;
+import com.codit.be_boda.auth.dto.LoginUser;
+import com.codit.be_boda.user.domain.User;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
-import com.codit.be_boda.user.domain.User;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-
-import com.codit.be_boda.auth.dto.LoginUser;
-import jakarta.servlet.http.HttpSession;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,6 +29,10 @@ public class KakaoController {
     @Value("${kakao.redirect-uri}")
     private String redirectUri;
 
+    // 프론트 배포 주소 환경변수로 관리
+    @Value("${app.front-url:http://localhost:5173}")
+    private String frontUrl;
+
     @GetMapping("/kakao/login")
     public String kakaoLogin() {
         String encodedRedirectUri = URLEncoder.encode(redirectUri, StandardCharsets.UTF_8);
@@ -45,7 +47,6 @@ public class KakaoController {
 
     @GetMapping("/callback")
     public String callback(@RequestParam String code, HttpSession session) {
-
         KakaoLoginResult result = kakaoService.loginOrCreateUser(code);
         User user = result.getUser();
 
@@ -59,7 +60,7 @@ public class KakaoController {
         session.setAttribute("loginUser", loginUser);
         session.setAttribute("kakaoAccessToken", result.getAccessToken());
 
-        return "redirect:http://localhost:5173/oauth/callback/kakao";
+        return "redirect:" + frontUrl + "/oauth/callback/kakao";
     }
 
     @GetMapping("/me")
@@ -68,7 +69,6 @@ public class KakaoController {
         LoginUser loginUser = (LoginUser) session.getAttribute("loginUser");
 
         Map<String, Object> response = new HashMap<>();
-
         if (loginUser == null) {
             response.put("loggedIn", false);
             response.put("message", "로그인하지 않은 사용자입니다.");
@@ -82,11 +82,9 @@ public class KakaoController {
         return response;
     }
 
-
-
     @GetMapping("/logout")
     @ResponseBody
-    public String logout(HttpSession session) {
+    public Map<String, Object> logout(HttpSession session) {
         String accessToken = (String) session.getAttribute("kakaoAccessToken");
 
         try {
@@ -96,6 +94,10 @@ public class KakaoController {
         } finally {
             session.invalidate();
         }
-        return "로그아웃 완료";
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "로그아웃 완료");
+        return response;
     }
 }

@@ -2,17 +2,17 @@ package com.codit.be_boda.auth.service;
 
 import com.codit.be_boda.auth.dto.KakaoLoginResult;
 import com.codit.be_boda.auth.dto.KakaoTokenResponse;
+import com.codit.be_boda.auth.dto.KakaoUserResponse;
+import com.codit.be_boda.user.domain.User;
+import com.codit.be_boda.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
-import com.codit.be_boda.auth.dto.KakaoUserResponse;
-import com.codit.be_boda.user.domain.User;
-import com.codit.be_boda.user.repository.UserRepository;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -21,19 +21,20 @@ public class KakaoService {
     @Value("${kakao.client-id}")
     private String clientId;
 
+    @Value("${kakao.client-secret}")
+    private String clientSecret;
+
     @Value("${kakao.redirect-uri}")
     private String redirectUri;
 
-
     private final RestClient restClient = RestClient.create();
-
     private final UserRepository userRepository;
 
     public KakaoTokenResponse getAccessToken(String code) {
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-
         body.add("grant_type", "authorization_code");
         body.add("client_id", clientId);
+        body.add("client_secret", clientSecret);
         body.add("redirect_uri", redirectUri);
         body.add("code", code);
 
@@ -83,4 +84,3 @@ public class KakaoService {
                 .toBodilessEntity();
     }
 }
-
