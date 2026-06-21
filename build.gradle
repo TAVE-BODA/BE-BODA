@@ -26,23 +26,24 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
 
-    //OAuth2
+    // Security + OAuth2 (카카오 로그인)
+    implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
 
     // JPA + PostgreSQL
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     runtimeOnly 'org.postgresql:postgresql'
 
-    // Spring AI - OpenAI
+    // Spring AI - OpenAI (ChatModel + EmbeddingModel)
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
-    // Spring AI - Vector Store
+    // Spring AI - Vector Store (SimpleVectorStore, SearchRequest)
     implementation 'org.springframework.ai:spring-ai-vector-store:1.0.0'
 
     // PDFBox 3.x
     implementation 'org.apache.pdfbox:pdfbox:3.0.2'
 
-    // Swagger (springdoc)
+    // Swagger
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 
     // Lombok
