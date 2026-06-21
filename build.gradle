@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.6'
+    id 'org.springframework.boot' version '3.3.6'
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -19,18 +19,41 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
-    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-    compileOnly 'org.projectlombok:lombok'
-    developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
-    runtimeOnly 'com.mysql:mysql-connector-j'
+    // Spring AI BOM
+    implementation platform('org.springframework.ai:spring-ai-bom:1.0.0')
+
+    // Web + Thymeleaf
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+    //OAuth2
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+
+    // JPA + PostgreSQL
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     runtimeOnly 'org.postgresql:postgresql'
+
+    // Spring AI - OpenAI
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+
+    // Spring AI - Vector Store
+    implementation 'org.springframework.ai:spring-ai-vector-store:1.0.0'
+
+    // PDFBox 3.x
+    implementation 'org.apache.pdfbox:pdfbox:3.0.2'
+
+    // Swagger (springdoc)
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
-    testImplementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+
+    // Test
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testCompileOnly 'org.projectlombok:lombok'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
