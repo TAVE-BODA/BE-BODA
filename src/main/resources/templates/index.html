@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>보험생이 — 보다</title>
+    <link rel="stylesheet" th:href="@{/css/main.css}">
+</head>
+<body>
+
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="logo">보험생이</div>
+        <nav>
+            <a href="/faq">자주 묻는 질문</a>
+            <a href="/dashboard">내 보험 보기</a>
+        </nav>
+    </div>
+</header>
+
+<div id="analysis-banner" class="analysis-banner hidden">
+    <span class="spinner"></span>
+    <span id="banner-text">분석 중이에요...</span>
+</div>
+
+<div class="app-layout">
+    <!-- 업로드 패널 -->
+    <aside class="upload-panel">
+        <div class="panel-title">📄 파일 업로드</div>
+        <p class="privacy-note">🔒 분석 후 원본은 즉시 삭제돼요</p>
+
+        <div class="upload-zone">
+            <div class="upload-label">보험증권</div>
+            <div class="drop-area" ondragover="event.preventDefault()" ondrop="handleDrop(event,'policy')">
+                <span id="policy-file-name">PDF를 드래그하거나</span>
+                <button class="btn-ghost" onclick="document.getElementById('policy-input').click()">파일 선택</button>
+                <input type="file" id="policy-input" accept=".pdf" hidden onchange="handleFile(event,'policy')">
+            </div>
+            <div id="policy-status" class="upload-status"></div>
+        </div>
+
+        <div class="upload-zone">
+            <div class="upload-label">보험약관 <span class="optional">(선택)</span></div>
+            <div class="drop-area" ondragover="event.preventDefault()" ondrop="handleDrop(event,'terms')">
+                <span id="terms-file-name">PDF를 드래그하거나</span>
+                <button class="btn-ghost" onclick="document.getElementById('terms-input').click()">파일 선택</button>
+                <input type="file" id="terms-input" accept=".pdf" hidden onchange="handleFile(event,'terms')">
+            </div>
+            <div id="terms-status" class="upload-status"></div>
+            <p class="terms-tip">⏱️ 약관은 시간이 걸려요. 창을 열어두면 이어볼 수 있어요.</p>
+        </div>
+    </aside>
+
+    <!-- 챗봇 -->
+    <main class="chat-area">
+        <div class="boda-greeting">
+            <div class="boda-avatar">🤖</div>
+            <div class="boda-bubble">
+                <strong>안녕하세요! 저는 보다예요 👋</strong><br>
+                보험증권과 약관을 분석해서 보험금 청구를 도와드릴게요.<br>
+                <small class="privacy">분석 후 파일은 즉시 삭제돼요.</small>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chat-messages"></div>
+
+        <div class="chip-row">
+            <button class="chip" onclick="selectChip('CLAIM','보험금 청구할 수 있어요?')">💬 보험금 청구할 수 있어요?</button>
+            <button class="chip" onclick="selectChip('AMOUNT','얼마나 받을 수 있어요?')">💰 얼마나 받을 수 있어요?</button>
+            <button class="chip" onclick="selectChip('DOCUMENTS','어떤 서류가 필요해요?')">📄 어떤 서류가 필요해요?</button>
+            <button class="chip" onclick="selectChip('OVERVIEW','내 보험 한눈에 보고 싶어요')">📊 내 보험 한눈에 보고 싶어요</button>
+        </div>
+
+        <div class="input-row">
+            <input type="text" id="chat-input" placeholder="질문을 자유롭게 입력하세요..."
+                   onkeydown="if(event.key==='Enter') sendMessage()">
+            <button class="btn-send" onclick="sendMessage()">전송</button>
+        </div>
+    </main>
+</div>
+
+<!-- 보험 조건 팝업 -->
+<div id="condition-modal" class="modal hidden">
+    <div class="modal-box">
+        <div class="modal-title">보험 조건 입력하기</div>
+        <p class="modal-sub">조건을 알려주시면 더 정확하게 분석해드릴게요</p>
+
+        <label>어떤 치료나 사고였어요? <span class="required">*</span></label>
+        <input type="text" id="cond-treatment" placeholder="예: 맹장염 수술, 교통사고 입원...">
+
+        <label>병원은 어떻게 이용했어요? <span class="required">*</span></label>
+        <div class="radio-group">
+            <label><input type="radio" name="hospital" value="통원"> 통원</label>
+            <label><input type="radio" name="hospital" value="입원"> 입원</label>
+            <label><input type="radio" name="hospital" value="응급실"> 응급실</label>
+            <label><input type="radio" name="hospital" value="모르겠어요"> 모르겠어요</label>
+        </div>
+
+        <label>언제 치료를 받았어요? <span class="optional-label">선택</span></label>
+        <input type="text" id="cond-date" placeholder="예: 2024년 3월, 지난주...">
+
+        <label>진료비가 대략 얼마였어요? <span class="optional-label">선택</span></label>
+        <input type="text" id="cond-cost" placeholder="예: 50만원, 모름...">
+
+        <div class="modal-actions">
+            <button class="btn-ghost" onclick="closeModal()">나중에 할게요</button>
+            <button class="btn-primary" onclick="submitCondition()">확인했어요!</button>
+        </div>
+    </div>
+</div>
+<div id="modal-overlay" class="modal-overlay hidden" onclick="closeModal()"></div>
+
+<script th:src="@{/js/main.js}"></script>
+</body>
+</html>

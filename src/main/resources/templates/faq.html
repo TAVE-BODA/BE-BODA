@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>자주 묻는 질문 — 보험생이</title>
+    <link rel="stylesheet" th:href="@{/css/main.css}">
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="logo"><a href="/">보험생이</a></div>
+        <nav><a href="/">← 챗봇으로 가기</a></nav>
+    </div>
+</header>
+<div class="faq-wrap">
+    <h1 class="faq-title">자주 묻는 질문</h1>
+    <div class="faq-search">
+        <input type="text" id="faq-search" placeholder="무엇이든 찾아보세요" oninput="filterFaq(this.value)">
+    </div>
+    <div class="faq-categories">
+        <button class="cat-btn active" onclick="filterCat('all',this)">전체</button>
+        <button class="cat-btn" onclick="filterCat('upload',this)">파일 업로드</button>
+        <button class="cat-btn" onclick="filterCat('analysis',this)">분석 결과</button>
+        <button class="cat-btn" onclick="filterCat('privacy',this)">개인정보 보호</button>
+        <button class="cat-btn" onclick="filterCat('support',this)">지원 안내</button>
+    </div>
+    <div id="faq-list" class="faq-list"></div>
+</div>
+<script th:src="@{/js/faq.js}"></script>
+</body>
+</html>
