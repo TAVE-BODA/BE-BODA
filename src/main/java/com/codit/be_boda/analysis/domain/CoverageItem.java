@@ -27,7 +27,7 @@ public class CoverageItem {
     @JoinColumn(name = "analysis_id", nullable = false)
     private PolicyAnalysis policyAnalysis;
 
-    // 진단비/수술비/입원비/실손/골절재해/치아
+    // 진단/수술/입원/실손/골절재해/치아
     @Column(name = "coverage_type", nullable = false, length = 50)
     private String coverageType;
 
