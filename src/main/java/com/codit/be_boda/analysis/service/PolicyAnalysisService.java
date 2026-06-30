@@ -270,11 +270,19 @@ public class PolicyAnalysisService {
             case "실손" -> """
                     {
                       "isDetected": true/false,
-                      "deductibleRate": 자기부담금 비율(소수점, 예: 0.2, 없으면 null),
-                      "generation": 실손 세대(예: 4세대, 없으면 null),
-                      "duplicateWarning": 중복보장 경고 여부(true/false),
-                      "exclusionKeywords": "면책 키워드 요약"
+                      "items": [],
+                      "exclusionKeywords": null
                     }
+                    
+                    실손 보장은 일반 보장 카드처럼 금액 항목을 추출하지 않는다.
+                    실손이 확인된 경우에는 세대 정보만 추출한다.
+                    예: "1세대 가입 확인", "2세대 가입 확인", "3세대 가입 확인", "4세대 가입 확인".
+                    
+                    실손 세대가 확인되면 items에는 coverageName이 "실손 세대"인 item 하나만 생성한다.
+                    condition에는 "3세대 가입 확인"처럼 작성하고, coverageAmount에는 null을 넣는다.
+                    
+                    실손 보장이 확인되지 않으면 isDetected는 false, items는 빈 배열 [], exclusionKeywords는 null로 작성한다.
+                   
                     """;
             case "골절재해" -> """
                     {
