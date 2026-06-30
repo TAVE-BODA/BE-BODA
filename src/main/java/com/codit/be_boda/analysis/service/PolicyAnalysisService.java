@@ -272,7 +272,17 @@ public class PolicyAnalysisService {
             case "실손" -> """
                     {
                       "isDetected": true/false,
-                      "items": [],
+                      "items": [
+                        {
+                            "coverageName": "실손 세대",
+                            "amounts": [
+                              {
+                                "condition" : "실손 세대 정보. 예: 1세대 가입 확인, 2세대 가입 확인, 3세대 가입 확인, 4세대 가입 확인",
+                                "coverageAmount": null
+                              }
+                            ]
+                        }
+                      ],
                       "exclusionKeywords": null
                     }
                     
