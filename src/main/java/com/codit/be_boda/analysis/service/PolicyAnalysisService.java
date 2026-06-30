@@ -206,12 +206,28 @@ public class PolicyAnalysisService {
                     """;
             case "수술" -> """
                     {
-                      "isDetected": true/false,
-                      "grade1": 1종 수술비(원, 없으면 null),
-                      "grade2": 2종 수술비(원, 없으면 null),
-                      "grade3": 3종 수술비(원, 없으면 null),
-                      "exclusionKeywords": "면책 키워드 요약"
+                        "isDetected": true/false,
+                        "items": [
+                          {
+                            "coverageName": "수술 관련 보장항목명. 예: 1종 수술, 2종 수술, 3종 수술, 4종 수술, 5종 수술(고도·특수), 장기이식 수술, 수술 종별 기준",
+                            "amounts": [
+                              {
+                                "condition" : "기간/조건명. 예: 1년 이내, 1년 초과, 보험기간 전체, 조건없음",
+                                "coverageAmount": 보장금액(숫자만, 원 단위, 없으면 null)
+                              }
+                            ]
+                          }
+                        ],
+                        "exclusionKeywords": "면책 키워드 요약"
                     }
+                    수술 보장은 1종/2종/3종/4종/5종 수술처럼 종별로 금액이 다른 경우가 많다.
+                    이 경우 하나의 item으로 합치지 말고, 각 종별 수술을 별도의 item으로 분리한다.
+                    예: "1종 수술", "2종 수술", "3종 수술", "장기이식 수술"은 각각 다른 item으로 생성한다.
+
+                    수술 종별 기준표가 증권에 없고 약관 확인이 필요한 경우에는
+                    coverageName을 "수술 종별 기준"으로 하는 item을 추가하고,
+                    condition에는 "약관이 필요해요",
+                    coverageAmount에는 null을 넣는다.
                     """;
             case "입원" -> """
                     {
