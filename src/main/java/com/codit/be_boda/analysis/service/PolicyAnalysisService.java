@@ -249,11 +249,34 @@ public class PolicyAnalysisService {
                     """;
             case "골절재해" -> """
                     {
-                      "isDetected": true/false,
-                      "fractureAmount": 골절진단비(원, 없으면 null),
-                      "disasterAmount": 재해사고보장금(원, 없으면 null),
-                      "exclusionKeywords": "면책 키워드 요약"
+                        "isDetected": true/false,
+                        "items": [
+                          {
+                            "coverageName": "골절·재해 관련 보장항목명. 예: 재해골절 진단, 5대 재해골절 진단, 재해골절 수술, 재해 화상, 재해 장해, 깁스(Cast) 치료, 보장 범위",
+                            "amounts": [
+                              {
+                                "condition" :  "기간/조건명. 예: 보험기간 전체, 조건없음, 약관이 필요해요",
+                                "coverageAmount": 보장금액(숫자만, 원 단위, 없으면 null)
+                              }
+                            ]
+                          }
+                        ],
+                        "exclusionKeywords": "면책 키워드 요약"
                     }
+                    골절·재해 보장은 재해로 인한 골절, 화상, 장해, 깁스 치료, 골절 수술 등에 대해 지급되는 보장이다.
+                    증권에 여러 보장항목이 나열되어 있으면 하나로 합치지 말고 각각 별도의 item으로 분리한다.
+                    예: "재해골절 진단", "5대 재해골절 진단", "재해골절 수술", "재해 화상", "재해 장해", "깁스(Cast) 치료"는 각각 다른 item으로 생성한다.
+                    
+                    골절·재해 보장에서 치아파절 제외, 현저한 추상, 추상, 장해율 조건, 80% 이상 조건 등이 있으면 coverageName에 포함하여 구분한다.
+                    예: "재해골절 진단 (치아 파절 제외)", "재해 화상 — 현저한 추상", "재해 장해 (80% 이상)"처럼 작성한다.
+                    
+                    보장 범위가 증권에 명확히 설명되어 있지 않고 약관 확인이 필요한 경우에는
+                    coverageName을 "보장 범위"로 하는 item을 추가하고,
+                    condition에는 "약관이 필요해요",
+                    coverageAmount에는 null을 넣는다.
+                    
+                    금액이 "10만원/회"처럼 회당 지급이면 coverageAmount에는 숫자만 원 단위로 넣고,
+                    condition에는 "회당" 또는 "1회당"이라고 작성한다.
                     """;
             case "치아" -> """
                     {
