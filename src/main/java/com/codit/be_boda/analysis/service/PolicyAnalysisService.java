@@ -138,6 +138,8 @@ public class PolicyAnalysisService {
                 detail.remove("isDetected");
                 detail.remove("exclusionKeywords");
 
+                detail.putIfAbsent("items", List.of());
+
                 CoverageItem card = CoverageItem.builder()
                         .policyAnalysis(analysis)
                         .coverageType(coverageType)
@@ -320,7 +322,7 @@ public class PolicyAnalysisService {
                         "isDetected": true/false,
                         "items": [
                           {
-                            "coverageName": "coverageName": "치아 치료 관련 보장항목명. 예: 영구치 발치 치료, 가철성의치(틀니) — 보철물당, 고정성가공의치(브릿지), 임플란트, 크라운 치료, 인레이·온레이, 복합레진, 아말감·글래스아이오노머, 영구치 발치 개당",
+                            "coverageName": "치아 치료 관련 보장항목명. 예: 영구치 발치 치료, 가철성의치(틀니) — 보철물당, 고정성가공의치(브릿지), 임플란트, 크라운 치료, 인레이·온레이, 복합레진, 아말감·글래스아이오노머, 영구치 발치 개당",
                             "amounts": [
                               {
                                 "condition" :  "기간/조건명. 예: 2년 이내, 2년 초과, 1년 이내, 1년 초과, 조건없음",
