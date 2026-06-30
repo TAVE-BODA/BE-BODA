@@ -26,7 +26,7 @@ import java.util.Map;
 // 2. @Async로 비동기 분석 시작
 // 3. LLM으로 증권 정보 추출 → extracted_data JSONB 저장
 // 4. 보장 카드 6종 생성 → coverage_item 저장
-//5. S3 원본 파기.. (현재 연결 x)
+// 5. S3 원본 파기.. (현재 연결 x)
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -43,12 +43,12 @@ public class PolicyAnalysisService {
 
     // 보장 카드 6종
     private static final List<String> COVERAGE_TYPES =
-            List.of("진단비", "수술비", "입원비", "실손", "골절재해", "치아");
+            List.of("진단", "수술", "입원", "실손", "골절재해", "치아");
 
     @Transactional
     public PolicyAnalysis createAndStartAnalysis(User user, String originalFileName,
-                                                  String s3Key, boolean isOcr,
-                                                  String maskedText) {
+                                                 String s3Key, boolean isOcr,
+                                                 String maskedText) {
         PolicyAnalysis analysis = PolicyAnalysis.builder()
                 .user(user)
                 .originalFileName(originalFileName)
@@ -155,26 +155,27 @@ public class PolicyAnalysisService {
         }
     }
 
-   //보장 타입별 LLM 추출
+    //보장 타입별 LLM 추출
     private Map<String, Object> extractCoverageDetail(String maskedText, String coverageType) {
         String schema = getCoverageSchema(coverageType);
 
         String prompt = String.format("""
-                다음 보험 텍스트에서 '%s' 관련 보장 정보를 추출해줘.
-                반드시 JSON 형식으로만 응답해. 다른 텍스트는 절대 포함하지 마.
-                감지되지 않으면 isDetected를 false로 반환해.
-                
-                %s
-                
-                보험 텍스트:
-                %s
-                """, coverageType, schema,
+                        다음 보험 텍스트에서 '%s' 관련 보장 정보를 추출해줘.
+                        반드시 JSON 형식으로만 응답해. 다른 텍스트는 절대 포함하지 마.
+                        감지되지 않으면 isDetected를 false로 반환해.
+                        
+                        %s
+                        
+                        보험 텍스트:
+                        %s
+                        """, coverageType, schema,
                 maskedText.substring(0, Math.min(15000, maskedText.length())));
 
         String response = call(prompt);
         try {
             String cleaned = response.replaceAll("```json|```", "").trim();
-            return objectMapper.readValue(cleaned, new TypeReference<>() {});
+            return objectMapper.readValue(cleaned, new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.warn("[ANALYSIS] 보장 카드 파싱 실패 | type={} | {}", coverageType, e.getMessage());
             return Map.of("isDetected", false);
@@ -186,64 +187,72 @@ public class PolicyAnalysisService {
     // 세부 사항은 여기서 수정하기.. (현재 ocr 성능 문제로 제대로 나오지 않는 것 같음. 항목 비교 후 조금 수정해얗)
     private String getCoverageSchema(String coverageType) {
         return switch (coverageType) {
-            case "진단비" -> """
-                {
-                  "isDetected": true/false,
-                  "cancerLimit": 암진단비 한도(원, 없으면 null),
-                  "brainLimit": 뇌혈관진단비 한도(원, 없으면 null),
-                  "heartLimit": 심장질환진단비 한도(원, 없으면 null),
-                  "exclusionKeywords": "면책 키워드 요약"
-                }
-                """;
-            case "수술비" -> """
-                {
-                  "isDetected": true/false,
-                  "grade1": 1종 수술비(원, 없으면 null),
-                  "grade2": 2종 수술비(원, 없으면 null),
-                  "grade3": 3종 수술비(원, 없으면 null),
-                  "exclusionKeywords": "면책 키워드 요약"
-                }
-                """;
-            case "입원비" -> """
-                {
-                  "isDetected": true/false,
-                  "dailyAmount": 1일 입원일당(원, 없으면 null),
-                  "maxDays": 최대 보장일수(없으면 null),
-                  "waitingDays": 면책일수(없으면 null),
-                  "exclusionKeywords": "면책 키워드 요약"
-                }
-                """;
+            case "진단" -> """
+                    {
+                        "isDetected": true/false,
+                        "items": [
+                          {
+                            "coverageName": "진단 관련 보장항목명",
+                            "amounts": [
+                              {
+                                "condition" : "기간/조건명. 예: 1년이내, 1년 초과, 조건없음",
+                                "coverageAmount": 보장금액(숫자만, 원 단위, 없으면 null)
+                              }
+                            ]
+                          }
+                        ],
+                        "exclusionKeywords": "면책 키워드 요약"
+                    }
+                    """;
+            case "수술" -> """
+                    {
+                      "isDetected": true/false,
+                      "grade1": 1종 수술비(원, 없으면 null),
+                      "grade2": 2종 수술비(원, 없으면 null),
+                      "grade3": 3종 수술비(원, 없으면 null),
+                      "exclusionKeywords": "면책 키워드 요약"
+                    }
+                    """;
+            case "입원" -> """
+                    {
+                      "isDetected": true/false,
+                      "dailyAmount": 1일 입원일당(원, 없으면 null),
+                      "maxDays": 최대 보장일수(없으면 null),
+                      "waitingDays": 면책일수(없으면 null),
+                      "exclusionKeywords": "면책 키워드 요약"
+                    }
+                    """;
             case "실손" -> """
-                {
-                  "isDetected": true/false,
-                  "deductibleRate": 자기부담금 비율(소수점, 예: 0.2, 없으면 null),
-                  "generation": 실손 세대(예: 4세대, 없으면 null),
-                  "duplicateWarning": 중복보장 경고 여부(true/false),
-                  "exclusionKeywords": "면책 키워드 요약"
-                }
-                """;
+                    {
+                      "isDetected": true/false,
+                      "deductibleRate": 자기부담금 비율(소수점, 예: 0.2, 없으면 null),
+                      "generation": 실손 세대(예: 4세대, 없으면 null),
+                      "duplicateWarning": 중복보장 경고 여부(true/false),
+                      "exclusionKeywords": "면책 키워드 요약"
+                    }
+                    """;
             case "골절재해" -> """
-                {
-                  "isDetected": true/false,
-                  "fractureAmount": 골절진단비(원, 없으면 null),
-                  "disasterAmount": 재해사고보장금(원, 없으면 null),
-                  "exclusionKeywords": "면책 키워드 요약"
-                }
-                """;
+                    {
+                      "isDetected": true/false,
+                      "fractureAmount": 골절진단비(원, 없으면 null),
+                      "disasterAmount": 재해사고보장금(원, 없으면 null),
+                      "exclusionKeywords": "면책 키워드 요약"
+                    }
+                    """;
             case "치아" -> """
-                {
-                  "isDetected": true/false,
-                  "treatmentAmount": 치아치료비(원, 없으면 null),
-                  "implantAmount": 임플란트 보장(원, 없으면 null),
-                  "exclusionKeywords": "면책 키워드 요약"
-                }
-                """;
+                    {
+                      "isDetected": true/false,
+                      "treatmentAmount": 치아치료비(원, 없으면 null),
+                      "implantAmount": 임플란트 보장(원, 없으면 null),
+                      "exclusionKeywords": "면책 키워드 요약"
+                    }
+                    """;
             default -> """
-                {
-                  "isDetected": true/false,
-                  "exclusionKeywords": "면책 키워드 요약"
-                }
-                """;
+                    {
+                      "isDetected": true/false,
+                      "exclusionKeywords": "면책 키워드 요약"
+                    }
+                    """;
         };
     }
 
