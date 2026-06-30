@@ -114,7 +114,7 @@ CREATE TABLE coverage_item (
 );
 
 COMMENT ON TABLE  coverage_item                     IS '보험 보장 항목 카드. 증권 분석 시 생성';
-COMMENT ON COLUMN coverage_item.coverage_type       IS '진단비/수술비/입원비/실손/골절재해/치아';
+COMMENT ON COLUMN coverage_item.coverage_type       IS '진단/수술/입원/실손/골절재해/치아';
 COMMENT ON COLUMN coverage_item.evidence_text       IS '약관 연결 후 RAG로 채워지는 근거 원문';
 COMMENT ON COLUMN coverage_item.detail              IS '카드 타입별 세부 데이터 JSONB';
 
