@@ -1,5 +1,7 @@
 package com.codit.be_boda.chat.service;
 
+import com.codit.be_boda.global.exception.BusinessException;
+import com.codit.be_boda.global.exception.ErrorCode;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.request.ChatSessionCreateRequest;
 import com.codit.be_boda.chat.dto.response.ChatMessagePairResponse;
@@ -39,15 +41,15 @@ public class ChatService {
     @Transactional
     public ChatSessionResponse createSession(ChatSessionCreateRequest request) {
         if (request.getAnalysisId() == null) {
-            throw new IllegalArgumentException("analysisId는 필수입니다.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "analysisId는 필수입니다.");
         }
 
         PolicyAnalysisQueryRepository.PolicyAnalysisInfo analysisInfo =
                 policyAnalysisQueryRepository.findInfoByAnalysisId(request.getAnalysisId())
-                        .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 증권 분석 ID입니다."));
+                        .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
 
         if (!DONE_STATUS.equals(analysisInfo.analysisStatus())) {
-            throw new IllegalStateException("아직 증권 분석이 완료되지 않았습니다.");
+            throw new BusinessException(ErrorCode.ANALYSIS_NOT_DONE);
         }
 
         ChatSession chatSession = new ChatSession(
@@ -113,11 +115,11 @@ public class ChatService {
 
     private ChatSession findChatSession(Long chatSessionId) {
         if (chatSessionId == null) {
-            throw new IllegalArgumentException("chatSessionId는 필수입니다.");
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "chatSessionId는 필수입니다.");
         }
 
         return chatSessionRepository.findById(chatSessionId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 채팅방입니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_SESSION_NOT_FOUND));
     }
 
     private QuestionType resolveQuestionType(QuestionType questionType) {
