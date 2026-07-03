@@ -17,6 +17,7 @@ import com.codit.be_boda.chat.type.QuestionType;
 import com.codit.be_boda.chat.type.SenderType;
 import com.codit.be_boda.chat.type.TreatmentStartDateType;
 import com.codit.be_boda.chat.type.TreatmentType;
+import com.codit.be_boda.chat.validator.ChatMessageRequestValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,7 @@ public class ChatService {
     private final ChatMessageRepository chatMessageRepository;
     private final PolicyAnalysisQueryRepository policyAnalysisQueryRepository;
     private final CoverageItemQueryRepository coverageItemQueryRepository;
+    private final ChatMessageRequestValidator chatMessageRequestValidator;
 
     @Transactional
     public ChatSessionResponse createSession(ChatSessionCreateRequest request) {
@@ -66,9 +68,11 @@ public class ChatService {
 
     @Transactional
     public ChatMessagePairResponse sendMessage(Long chatSessionId, ChatMessageRequest request) {
+        chatMessageRequestValidator.validate(request);
+
         ChatSession chatSession = findChatSession(chatSessionId);
 
-        QuestionType questionType = resolveQuestionType(request.getQuestionType());
+        QuestionType questionType = request.getQuestionType();
 
         String userMessageContent = buildUserMessageContent(questionType, request);
 
@@ -120,14 +124,6 @@ public class ChatService {
 
         return chatSessionRepository.findById(chatSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_SESSION_NOT_FOUND));
-    }
-
-    private QuestionType resolveQuestionType(QuestionType questionType) {
-        if (questionType == null) {
-            return QuestionType.FREE_TEXT;
-        }
-
-        return questionType;
     }
 
     private String buildUserMessageContent(QuestionType questionType, ChatMessageRequest request) {
