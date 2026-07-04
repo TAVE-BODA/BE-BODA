@@ -87,7 +87,7 @@ COMMENT ON COLUMN policy_analysis.analysis_status   IS '분석 상태. PENDING/A
 -- detail JSONB 예시:
 -- 진단비:
 
---          coverage_type = "실손"
+--          coverage_type = "진단"
 --          is_detected = true
 --          exclusion_keywords = null
  --         {
