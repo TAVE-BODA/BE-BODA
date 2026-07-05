@@ -88,9 +88,8 @@ public class ChatService {
 
         ChatMessage savedUserMessage = chatMessageRepository.save(userMessage);
 
-        String aiAnswer = chatAnswerService.generateCoverageBasedAnswer(
-                chatSession.getAnalysisId()
-        );
+        String aiAnswer = chatAnswerService.generateAnswer(chatSession, request);
+
         ChatMessage aiMessage = new ChatMessage(
                 chatSession.getChatSessionId(),
                 SenderType.AI,
