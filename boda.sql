@@ -84,14 +84,42 @@ COMMENT ON COLUMN policy_analysis.analysis_status   IS '분석 상태. PENDING/A
 --
 -- policy_analysis와 1:N (최대 6개)
 -- 카드 타입별 세부 데이터는 JSONB detail에 저장
---
 -- detail JSONB 예시:
--- 진단비:    {"cancerLimit":30000000,"brainLimit":5000000,"heartLimit":3000000}
--- 수술비:    {"grade1":1000000,"grade2":500000,"grade3":300000}
--- 입원비:    {"dailyAmount":50000,"maxDays":180,"waitingDays":2}
--- 실손:      {"deductibleRate":0.2,"generation":"4세대","duplicateWarning":true}
--- 골절·재해: {"fractureAmount":500000,"disasterAmount":1000000}
--- 치아:      {"treatmentAmount":300000,"implantAmount":1000000}
+-- 진단비:
+
+--          coverage_type = "진단"
+--          is_detected = true
+--          exclusion_keywords = null
+ --         {
+           --   "items": [
+           --     {
+           --       "coverageName": "암진단",
+           --       "amounts": [
+           --         {
+           --           "condition": "조건없음",
+           --           "coverageAmount": 10000000
+           --         }
+           --       ]
+           --     }
+           --   ]
+           -- }
+-- 실손 :
+--         coverage_type = "실손"
+--         is_detected = true
+--         exclusion_keywords = null
+--         detail = {
+--           "items": [
+--             {
+--               "coverageName": "실손 세대",
+--               "amounts": [
+--                 {
+--                   "condition": "3세대 가입 확인",
+--                   "coverageAmount": null
+--                 }
+--               ]
+--             }
+--           ]
+--         }
 -- =============================================
 CREATE TABLE coverage_item (
                                coverage_id         BIGSERIAL       PRIMARY KEY,
@@ -114,7 +142,7 @@ CREATE TABLE coverage_item (
 );
 
 COMMENT ON TABLE  coverage_item                     IS '보험 보장 항목 카드. 증권 분석 시 생성';
-COMMENT ON COLUMN coverage_item.coverage_type       IS '진단비/수술비/입원비/실손/골절재해/치아';
+COMMENT ON COLUMN coverage_item.coverage_type       IS '진단/수술/입원/실손/골절재해/치아';
 COMMENT ON COLUMN coverage_item.evidence_text       IS '약관 연결 후 RAG로 채워지는 근거 원문';
 COMMENT ON COLUMN coverage_item.detail              IS '카드 타입별 세부 데이터 JSONB';
 

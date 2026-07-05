@@ -12,7 +12,7 @@ public class DashboardResult {
 
     @Data
     public static class CoverageCard {
-        private String type;            // 진단비 / 수술비 / 입원비 / 골절재해 / 생활특수 / 치아
+        private String type;            // 진단 / 수술 / 입원 / 골절재해 / 실손 / 치아
         private String insurerTag;
         private String coverageAmount;
         private List<String> exclusions;
