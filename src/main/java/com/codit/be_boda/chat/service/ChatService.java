@@ -39,6 +39,7 @@ public class ChatService {
     private final PolicyAnalysisQueryRepository policyAnalysisQueryRepository;
     private final CoverageItemQueryRepository coverageItemQueryRepository;
     private final ChatMessageRequestValidator chatMessageRequestValidator;
+    private final ChatAnswerService chatAnswerService;
 
     @Transactional
     public ChatSessionResponse createSession(ChatSessionCreateRequest request) {
@@ -55,8 +56,8 @@ public class ChatService {
         }
 
         ChatSession chatSession = new ChatSession(
-                analysisInfo.userId(),
                 analysisInfo.analysisId(),
+                analysisInfo.userId(),
                 request.getTermsDocumentId(),
                 DEFAULT_SESSION_TITLE
         );
@@ -87,8 +88,9 @@ public class ChatService {
 
         ChatMessage savedUserMessage = chatMessageRepository.save(userMessage);
 
-        String aiAnswer = generateAiAnswer(chatSession, questionType, request);
-
+        String aiAnswer = chatAnswerService.generateCoverageBasedAnswer(
+                chatSession.getAnalysisId()
+        );
         ChatMessage aiMessage = new ChatMessage(
                 chatSession.getChatSessionId(),
                 SenderType.AI,

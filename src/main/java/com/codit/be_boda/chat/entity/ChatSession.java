@@ -39,6 +39,7 @@ public class ChatSession {
     public ChatSession(Long analysisId, Long userId, Long termsDocumentId, String sessionTitle) {
         this.analysisId = analysisId;
         this.userId = userId;
+        this.termsDocumentId = termsDocumentId;
         this.sessionTitle = sessionTitle;
         this.createdAt = LocalDateTime.now();
     }
