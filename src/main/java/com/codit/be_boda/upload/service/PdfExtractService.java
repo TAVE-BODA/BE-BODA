@@ -6,22 +6,36 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
-import software.amazon.awssdk.services.textract.TextractClient;
-import software.amazon.awssdk.services.textract.model.*;
 
 import java.io.IOException;
+import java.util.Base64;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
-
-//PDF 텍스트 추출 서비스
+// PDF 텍스트 추출 서비스
+//클로바 OCR API 연동.
+//POST {CLOVA_OCR_INVOKE_URL}
+//Header: X-OCR-SECRET: {시크릿키}
+//Body: { version, requestId, timestamp, lang, images: [{format, name, data}] }
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PdfExtractService {
 
-    private final TextractClient textractClient;
+    @Value("${clova.ocr.invoke-url}")
+    private String clovaOcrInvokeUrl;
+
+    @Value("${clova.ocr.secret-key}")
+    private String clovaOcrSecretKey;
+
+    private final RestClient restClient = RestClient.create();
 
     private static final long MAX_SIZE = 20 * 1024 * 1024L;
     private static final int MIN_TEXT_LENGTH = 100;
@@ -41,7 +55,6 @@ public class PdfExtractService {
     ) {}
 
     public ExtractResult extract(MultipartFile file) {
-        // 유효성 검사
         if (file == null || file.isEmpty())
             return fail("NO_FILE", "파일을 선택해주세요.");
         if (file.getSize() > MAX_SIZE)
@@ -55,19 +68,17 @@ public class PdfExtractService {
             String pdfText = extractWithPdfBox(file);
 
             if (pdfText != null && pdfText.trim().length() >= MIN_TEXT_LENGTH) {
-                // 마스킹 후 반환
-                log.info("[PDF] 텍스트 PDF 추출 완료 | 길이={}", pdfText.length());
+                log.info("[PDF] 텍스트 PDF 추출 완료 | 길이={}", pdfText.trim().length());
                 return new ExtractResult(true, false, mask(pdfText.trim()), null, null);
             }
 
-            //OCR (AWS Textract) 감지 후 변환..
-            log.info("[PDF] 이미지 PDF 감지 → OCR 시작");
-            String ocrText = extractWithTextract(file);
+            log.info("[PDF] 이미지 PDF 감지 → 클로바 OCR 시작");
+            String ocrText = extractWithClovaOcr(file);
 
             if (ocrText == null || ocrText.trim().length() < MIN_TEXT_LENGTH)
                 return fail("LOW_QUALITY", "파일 품질이 낮아 분석하기 어려워요. 보험사 앱에서 다시 받아봐요.");
 
-            log.info("[PDF] OCR 추출 완료 | 길이={}", ocrText.length());
+            log.info("[PDF] 클로바 OCR 추출 완료 | 길이={}", ocrText.trim().length());
             return new ExtractResult(true, true, mask(ocrText.trim()), null, null);
 
         } catch (Exception e) {
@@ -92,7 +103,7 @@ public class PdfExtractService {
             if (text == null || text.trim().length() < MIN_TEXT_LENGTH)
                 return fail("LOW_QUALITY", "약관은 텍스트 PDF만 지원해요. 보험사 홈페이지에서 받아봐요.");
 
-            log.info("[PDF] 약관 추출 완료 | 길이={}", text.length());
+            log.info("[PDF] 약관 추출 완료 | 길이={}", text.trim().length());
             return new ExtractResult(true, false, mask(text.trim()), null, null);
 
         } catch (Exception e) {
@@ -102,37 +113,96 @@ public class PdfExtractService {
     }
 
     // PDFBox추출 시작.
-    private String extractWithPdfBox(MultipartFile file) throws IOException {
+    private String extractWithPdfBox(MultipartFile file) {
         try (var is = file.getInputStream();
              PDDocument doc = Loader.loadPDF(new RandomAccessReadBuffer(is))) {
-            return new PDFTextStripper().getText(doc);
+            String text = new PDFTextStripper().getText(doc);
+            log.info("[PDF] PDFBox 추출 결과 길이={}", text == null ? 0 : text.trim().length());
+            return text;
         } catch (Exception e) {
             log.warn("[PDF] PDFBox 추출 실패 (이미지 PDF일 수 있음) | {}", e.getMessage());
             return null;
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private String extractWithClovaOcr(MultipartFile file) throws IOException {
+        // PDF → Base64 인코딩
+        byte[] fileBytes = file.getBytes();
+        String base64Data = Base64.getEncoder().encodeToString(fileBytes);
 
-    private String extractWithTextract(MultipartFile file) throws IOException {
-        byte[] bytes = file.getBytes();
-        software.amazon.awssdk.core.SdkBytes sdkBytes =
-                software.amazon.awssdk.core.SdkBytes.fromByteArray(bytes);
+        // 요청 바디 구성
+        Map<String, Object> requestBody = Map.of(
+                "version", "V2",
+                "requestId", UUID.randomUUID().toString(),
+                "timestamp", System.currentTimeMillis(),
+                "lang", "ko",
+                "images", List.of(Map.of(
+                        "format", "pdf",
+                        "name", "policy_document",
+                        "data", base64Data
+                ))
+        );
 
-        DetectDocumentTextRequest request = DetectDocumentTextRequest.builder()
-                .document(Document.builder()
-                        .bytes(sdkBytes)
-                        .build())
-                .build();
+        // 클로바 OCR API 호출
+        Map<String, Object> response = restClient.post()
+                .uri(clovaOcrInvokeUrl)
+                .header("X-OCR-SECRET", clovaOcrSecretKey)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(requestBody)
+                .retrieve()
+                .body(Map.class);
 
-        DetectDocumentTextResponse response = textractClient.detectDocumentText(request);
+        if (response == null) {
+            log.error("[OCR] 클로바 OCR 응답 없음");
+            return null;
+        }
 
+        // 응답에서 텍스트 추출
+        // images[0].fields[].inferText 를 lineBreak 기준으로 조합
+        List<Map<String, Object>> images =
+                (List<Map<String, Object>>) response.get("images");
+
+        if (images == null || images.isEmpty()) {
+            log.error("[OCR] 클로바 OCR images 없음");
+            return null;
+        }
+
+        Map<String, Object> firstImage = images.get(0);
+        String inferResult = (String) firstImage.get("inferResult");
+
+        if (!"SUCCESS".equals(inferResult)) {
+            log.error("[OCR] 클로바 OCR 인식 실패 | inferResult={} | message={}",
+                    inferResult, firstImage.get("message"));
+            return null;
+        }
+
+        List<Map<String, Object>> fields =
+                (List<Map<String, Object>>) firstImage.get("fields");
+
+        if (fields == null || fields.isEmpty()) {
+            log.warn("[OCR] 클로바 OCR fields 없음");
+            return null;
+        }
+
+        // inferText 조합 (lineBreak=true면 줄바꿈 추가)
         StringBuilder sb = new StringBuilder();
-        for (Block block : response.blocks()) {
-            if (block.blockType() == BlockType.LINE && block.text() != null) {
-                sb.append(block.text()).append("\n");
+        for (Map<String, Object> field : fields) {
+            String inferText = (String) field.get("inferText");
+            Boolean lineBreak = (Boolean) field.get("lineBreak");
+            if (inferText != null) {
+                sb.append(inferText);
+                if (Boolean.TRUE.equals(lineBreak)) {
+                    sb.append("\n");
+                } else {
+                    sb.append(" ");
+                }
             }
         }
-        return sb.toString();
+
+        String result = sb.toString().trim();
+        log.info("[OCR] 클로바 OCR 텍스트 추출 완료 | 길이={}", result.length());
+        return result;
     }
 
     // 민감정보 마스킹

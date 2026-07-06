@@ -23,7 +23,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 
-
 @RestController
 @RequestMapping("/api/upload")
 @RequiredArgsConstructor
@@ -55,12 +54,11 @@ public class UploadController {
                     Map.of("error", extracted.errorMessage(), "code", extracted.errorCode()));
 
         User user = userRepository.findById(loginUser.id()).orElseThrow();
-        //User user = userRepository.findById(1L).orElseThrow();
 
-        // TODO: S3 권한 해결 후 아래 주석 해제
-        // String s3Key = s3Service.uploadFile(file, "policy/" + user.getId());
-        String s3Key = null; // 임시: S3 없이 직접 처리
+        //S3 업로드 (원본 임시 저장 → 분석 완료 후 자동 파기)
+        String s3Key = s3Service.uploadFile(file, "policy/" + user.getId());
 
+        // 분석 시작 (비동기)
         PolicyAnalysis analysis = policyAnalysisService.createAndStartAnalysis(
                 user, file.getOriginalFilename(), s3Key,
                 extracted.isOcr(), extracted.text());
@@ -68,7 +66,6 @@ public class UploadController {
         return ResponseEntity.ok(new UploadResponse(
                 "ANALYZING", analysis.getId(), "증권 분석을 시작했어요!"));
     }
-
 
     @Operation(summary = "보험약관 PDF 업로드")
     @PostMapping("/terms")
@@ -89,10 +86,10 @@ public class UploadController {
 
         User user = userRepository.findById(loginUser.id()).orElseThrow();
 
-        // TODO: S3 권한 해결 후 아래 주석 해제
-        // String s3Key = s3Service.uploadFile(file, "terms/" + user.getId());
-        String s3Key = null; // 임시: S3 없이 직접 처리
+        //S3 업로드 (청킹 완료 후 자동 파기)
+        String s3Key = s3Service.uploadFile(file, "terms/" + user.getId());
 
+        //파싱 시작 (비동기)
         TermsDocument doc = termsAnalysisService.createAndStartParsing(
                 user, file.getOriginalFilename(), s3Key, extracted.text());
 
