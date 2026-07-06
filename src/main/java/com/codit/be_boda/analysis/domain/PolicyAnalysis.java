@@ -88,4 +88,28 @@ public class PolicyAnalysis {
     public void deleteS3Key() {
         this.s3Key = null;
     }
+
+    //보험사명, 보험가입일, 보험만기일
+    public String getCompanyName() {
+        return getExtractedDataValue("companyName");
+    }
+
+    public String getInsuranceStartDate() {
+        return getExtractedDataValue("insuranceStartDate");
+    }
+
+    public String getInsuranceEndDate() {
+        return getExtractedDataValue("insuranceEndDate");
+    }
+
+    private String getExtractedDataValue(String key) {
+        if (this.extractedData == null) {
+            return null;
+        }
+
+        Object value = this.extractedData.get(key);
+        return value != null ? value.toString() : null;
+    }
 }
+
+
