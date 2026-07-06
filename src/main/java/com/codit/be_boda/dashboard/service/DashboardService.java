@@ -41,9 +41,13 @@ public class DashboardService {
 //               변환된 결과를 다시 리스트로 모으기
 
 
+
         return new DashboardResponse(
                 analysis.getId(),
                 analysis.getAnalysisStatus(),
+                analysis.getCompanyName(),
+                analysis.getInsuranceStartDate(),
+                analysis.getInsuranceEndDate(),
                 coverages
         );
     }
