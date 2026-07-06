@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -12,11 +13,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Base64;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 
 // PDF 텍스트 추출 서비스
@@ -39,6 +40,7 @@ public class PdfExtractService {
 
     private static final long MAX_SIZE = 20 * 1024 * 1024L;
     private static final int MIN_TEXT_LENGTH = 100;
+    private static final float OCR_DPI = 150f; // 해상도 (높을수록 정확도↑, 속도↓)
 
     // 민감정보 마스킹 패턴
     private static final Pattern RESIDENT_ID = Pattern.compile("\\d{6}-[1-4]\\d{6}");
@@ -73,7 +75,7 @@ public class PdfExtractService {
             }
 
             log.info("[PDF] 이미지 PDF 감지 → 클로바 OCR 시작");
-            String ocrText = extractWithClovaOcr(file);
+            String ocrText = extractWithClovaOcrByPage(file);
 
             if (ocrText == null || ocrText.trim().length() < MIN_TEXT_LENGTH)
                 return fail("LOW_QUALITY", "파일 품질이 낮아 분석하기 어려워요. 보험사 앱에서 다시 받아봐요.");
@@ -82,7 +84,7 @@ public class PdfExtractService {
             return new ExtractResult(true, true, mask(ocrText.trim()), null, null);
 
         } catch (Exception e) {
-            log.error("[PDF] 추출 실패 | {}", e.getMessage());
+            log.error("[PDF] 추출 실패 | {}", e.getMessage(), e);
             return fail("PARSE_ERROR", "파일을 읽을 수 없어요. 다시 시도해주세요.");
         }
     }
@@ -125,84 +127,105 @@ public class PdfExtractService {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private String extractWithClovaOcr(MultipartFile file) throws IOException {
-        // PDF → Base64 인코딩
-        byte[] fileBytes = file.getBytes();
-        String base64Data = Base64.getEncoder().encodeToString(fileBytes);
+    private String extractWithClovaOcrByPage(MultipartFile file) throws IOException {
+        StringBuilder fullText = new StringBuilder();
 
-        // 요청 바디 구성
+        try (var is = file.getInputStream();
+             PDDocument doc = Loader.loadPDF(new RandomAccessReadBuffer(is))) {
+
+            int totalPages = doc.getNumberOfPages();
+            log.info("[OCR] 총 페이지 수={}", totalPages);
+
+            PDFRenderer renderer = new PDFRenderer(doc);
+
+            for (int page = 0; page < totalPages; page++) {
+                log.info("[OCR] 페이지 {}/{} 처리 중...", page + 1, totalPages);
+
+                // 페이지를 이미지로 렌더링
+                BufferedImage image = renderer.renderImageWithDPI(page, OCR_DPI);
+
+                // 이미지를 JPEG Base64로 변환
+                String base64Image = imageToBase64(image, "jpeg");
+
+                // 클로바 OCR API 호출
+                String pageText = callClovaOcr(base64Image, "jpeg", page + 1);
+                if (pageText != null && !pageText.isBlank()) {
+                    fullText.append(pageText).append("\n");
+                }
+            }
+        }
+
+        return fullText.toString().trim();
+    }
+
+    private String imageToBase64(BufferedImage image, String format) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(image, format, baos);
+        return Base64.getEncoder().encodeToString(baos.toByteArray());
+    }
+
+
+    //클로바 단일 이미지 추출
+    @SuppressWarnings("unchecked")
+    private String callClovaOcr(String base64Image, String format, int pageNum) {
         Map<String, Object> requestBody = Map.of(
                 "version", "V2",
                 "requestId", UUID.randomUUID().toString(),
                 "timestamp", System.currentTimeMillis(),
                 "lang", "ko",
                 "images", List.of(Map.of(
-                        "format", "pdf",
-                        "name", "policy_document",
-                        "data", base64Data
+                        "format", format,
+                        "name", "page_" + pageNum,
+                        "data", base64Image
                 ))
         );
 
-        // 클로바 OCR API 호출
-        Map<String, Object> response = restClient.post()
-                .uri(clovaOcrInvokeUrl)
-                .header("X-OCR-SECRET", clovaOcrSecretKey)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(requestBody)
-                .retrieve()
-                .body(Map.class);
+        try {
+            Map<String, Object> response = restClient.post()
+                    .uri(clovaOcrInvokeUrl)
+                    .header("X-OCR-SECRET", clovaOcrSecretKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(Map.class);
 
-        if (response == null) {
-            log.error("[OCR] 클로바 OCR 응답 없음");
-            return null;
-        }
+            if (response == null) return null;
 
-        // 응답에서 텍스트 추출
-        // images[0].fields[].inferText 를 lineBreak 기준으로 조합
-        List<Map<String, Object>> images =
-                (List<Map<String, Object>>) response.get("images");
+            List<Map<String, Object>> images =
+                    (List<Map<String, Object>>) response.get("images");
+            if (images == null || images.isEmpty()) return null;
 
-        if (images == null || images.isEmpty()) {
-            log.error("[OCR] 클로바 OCR images 없음");
-            return null;
-        }
+            Map<String, Object> firstImage = images.get(0);
+            String inferResult = (String) firstImage.get("inferResult");
 
-        Map<String, Object> firstImage = images.get(0);
-        String inferResult = (String) firstImage.get("inferResult");
+            if (!"SUCCESS".equals(inferResult)) {
+                log.warn("[OCR] 페이지 {} 인식 실패 | inferResult={}", pageNum, inferResult);
+                return null;
+            }
 
-        if (!"SUCCESS".equals(inferResult)) {
-            log.error("[OCR] 클로바 OCR 인식 실패 | inferResult={} | message={}",
-                    inferResult, firstImage.get("message"));
-            return null;
-        }
+            List<Map<String, Object>> fields =
+                    (List<Map<String, Object>>) firstImage.get("fields");
+            if (fields == null || fields.isEmpty()) return null;
 
-        List<Map<String, Object>> fields =
-                (List<Map<String, Object>>) firstImage.get("fields");
-
-        if (fields == null || fields.isEmpty()) {
-            log.warn("[OCR] 클로바 OCR fields 없음");
-            return null;
-        }
-
-        // inferText 조합 (lineBreak=true면 줄바꿈 추가)
-        StringBuilder sb = new StringBuilder();
-        for (Map<String, Object> field : fields) {
-            String inferText = (String) field.get("inferText");
-            Boolean lineBreak = (Boolean) field.get("lineBreak");
-            if (inferText != null) {
-                sb.append(inferText);
-                if (Boolean.TRUE.equals(lineBreak)) {
-                    sb.append("\n");
-                } else {
-                    sb.append(" ");
+            // inferText 조합
+            StringBuilder sb = new StringBuilder();
+            for (Map<String, Object> field : fields) {
+                String inferText = (String) field.get("inferText");
+                Boolean lineBreak = (Boolean) field.get("lineBreak");
+                if (inferText != null) {
+                    sb.append(inferText);
+                    sb.append(Boolean.TRUE.equals(lineBreak) ? "\n" : " ");
                 }
             }
-        }
 
-        String result = sb.toString().trim();
-        log.info("[OCR] 클로바 OCR 텍스트 추출 완료 | 길이={}", result.length());
-        return result;
+            String pageText = sb.toString().trim();
+            log.info("[OCR] 페이지 {} 완료 | 길이={}", pageNum, pageText.length());
+            return pageText;
+
+        } catch (Exception e) {
+            log.error("[OCR] 페이지 {} 호출 실패 | {}", pageNum, e.getMessage());
+            return null;
+        }
     }
 
     // 민감정보 마스킹
