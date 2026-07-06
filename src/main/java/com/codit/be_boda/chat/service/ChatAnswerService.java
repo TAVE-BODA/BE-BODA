@@ -7,6 +7,8 @@ import com.codit.be_boda.chat.service.answer.SurgeryAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.HospitalizationAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.DentalAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.DiagnosisAnswerGenerator;
+import com.codit.be_boda.chat.service.answer.OutpatientAnswerGenerator;
+import com.codit.be_boda.chat.service.answer.DisabilityAnswerGenerator;
 import com.codit.be_boda.chat.type.QuestionType;
 import com.codit.be_boda.chat.type.TreatmentType;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,8 @@ public class ChatAnswerService {
     private final HospitalizationAnswerGenerator hospitalizationAnswerGenerator; // 입원
     private final DentalAnswerGenerator dentalAnswerGenerator; // 치아
     private final DiagnosisAnswerGenerator diagnosisAnswerGenerator; // 진단
+    private final OutpatientAnswerGenerator outpatientAnswerGenerator; // 통원/외래
+    private final DisabilityAnswerGenerator disabilityAnswerGenerator; // 장해/후유장해
 
     // ChatService에서 호출하는 메인 메서드
     public String generateAnswer(ChatSession chatSession, ChatMessageRequest request) {
@@ -69,6 +73,14 @@ public class ChatAnswerService {
             return diagnosisAnswerGenerator.generateClaimAnswer(analysisId, request);
         }
 
+        if (hasTreatmentType(request, TreatmentType.OUTPATIENT)) {
+            return outpatientAnswerGenerator.generateClaimAnswer(analysisId, request);
+        }
+
+        if (hasTreatmentType(request, TreatmentType.DISABILITY)) {
+            return disabilityAnswerGenerator.generateClaimAnswer(analysisId, request);
+        }
+
 
         return "입력하신 치료 항목에 대해 청구 가능 여부를 확인하려면 추가 보장 항목 매칭이 필요합니다.";
     }
@@ -93,6 +105,14 @@ public class ChatAnswerService {
 
         if (hasTreatmentType(request, TreatmentType.DIAGNOSIS_ONLY)) {
             return diagnosisAnswerGenerator.generateAmountAnswer(analysisId, request);
+        }
+
+        if (hasTreatmentType(request, TreatmentType.OUTPATIENT)) {
+            return outpatientAnswerGenerator.generateAmountAnswer(analysisId, request);
+        }
+
+        if (hasTreatmentType(request, TreatmentType.DISABILITY)) {
+            return disabilityAnswerGenerator.generateAmountAnswer(analysisId, request);
         }
 
         return "입력하신 치료 항목에 대한 예상 보험금 계산은 아직 준비 중입니다.";
