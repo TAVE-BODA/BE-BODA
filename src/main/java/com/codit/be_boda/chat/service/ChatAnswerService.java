@@ -74,7 +74,7 @@ public class ChatAnswerService {
         }
 
         if (hasTreatmentType(request, TreatmentType.SURGERY)) {
-            return surgeryAnswerGenerator.generateClaimAnswer(analysisId, request);
+            return surgeryAnswerGenerator.generateAmountAnswer(analysisId, request);
         }
 
         if (hasTreatmentType(request, TreatmentType.HOSPITALIZATION)) {
