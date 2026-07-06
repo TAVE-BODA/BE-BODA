@@ -43,10 +43,14 @@ public class PdfExtractService {
     private static final float OCR_DPI = 150f; // 해상도 (높을수록 정확도↑, 속도↓)
 
     // 민감정보 마스킹 패턴
-    private static final Pattern RESIDENT_ID = Pattern.compile("\\d{6}-[1-4]\\d{6}");
-    private static final Pattern PHONE       = Pattern.compile("\\d{3}-\\d{3,4}-\\d{4}");
-    private static final Pattern EMAIL       = Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
-    private static final Pattern CARD        = Pattern.compile("\\d{4}-\\d{4}-\\d{4}-\\d{4}");
+    private static final Pattern RESIDENT_ID  = Pattern.compile("\\d{6}-[1-4]\\d{6}");
+    private static final Pattern PHONE        = Pattern.compile("\\d{3}-\\d{3,4}-\\d{4}");
+    private static final Pattern EMAIL        = Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}");
+    private static final Pattern CARD         = Pattern.compile("\\d{4}-\\d{4}-\\d{4}-\\d{4}");
+    // 증권 코드: *코드 또는 코드: 형태 뒤에 오는 영숫자 조합
+    private static final Pattern POLICY_CODE  = Pattern.compile("(?<=\\*코드\\s{0,5}|코드\\s{0,5}:\\s{0,5})[A-Z0-9]{5,20}");
+    // 계약번호: 숫자 10~20자리
+    private static final Pattern CONTRACT_NUM = Pattern.compile("(?<=계\\s*약\\s*번\\s*호\\s{0,10}|계약번호\\s{0,5})\\d{10,20}");
 
     public record ExtractResult(
             boolean success,
@@ -235,6 +239,8 @@ public class PdfExtractService {
         text = PHONE.matcher(text).replaceAll("***-****-****");
         text = EMAIL.matcher(text).replaceAll("***@***.***");
         text = CARD.matcher(text).replaceAll("****-****-****-****");
+        text = POLICY_CODE.matcher(text).replaceAll("***********");
+        text = CONTRACT_NUM.matcher(text).replaceAll("**************");
         return text;
     }
 
