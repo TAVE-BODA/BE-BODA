@@ -6,6 +6,7 @@ import com.codit.be_boda.chat.service.answer.CastAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.SurgeryAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.HospitalizationAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.DentalAnswerGenerator;
+import com.codit.be_boda.chat.service.answer.DiagnosisAnswerGenerator;
 import com.codit.be_boda.chat.type.QuestionType;
 import com.codit.be_boda.chat.type.TreatmentType;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ public class ChatAnswerService {
     private final SurgeryAnswerGenerator surgeryAnswerGenerator; // 수술
     private final HospitalizationAnswerGenerator hospitalizationAnswerGenerator; // 입원
     private final DentalAnswerGenerator dentalAnswerGenerator; // 치아
+    private final DiagnosisAnswerGenerator diagnosisAnswerGenerator; // 진단
 
     // ChatService에서 호출하는 메인 메서드
     public String generateAnswer(ChatSession chatSession, ChatMessageRequest request) {
@@ -63,6 +65,10 @@ public class ChatAnswerService {
             return dentalAnswerGenerator.generateClaimAnswer(analysisId, request);
         }
 
+        if (hasTreatmentType(request, TreatmentType.DIAGNOSIS_ONLY)) {
+            return diagnosisAnswerGenerator.generateClaimAnswer(analysisId, request);
+        }
+
 
         return "입력하신 치료 항목에 대해 청구 가능 여부를 확인하려면 추가 보장 항목 매칭이 필요합니다.";
     }
@@ -83,6 +89,10 @@ public class ChatAnswerService {
 
         if (hasTreatmentType(request, TreatmentType.DENTAL)) {
             return dentalAnswerGenerator.generateAmountAnswer(analysisId, request);
+        }
+
+        if (hasTreatmentType(request, TreatmentType.DIAGNOSIS_ONLY)) {
+            return diagnosisAnswerGenerator.generateAmountAnswer(analysisId, request);
         }
 
         return "입력하신 치료 항목에 대한 예상 보험금 계산은 아직 준비 중입니다.";
