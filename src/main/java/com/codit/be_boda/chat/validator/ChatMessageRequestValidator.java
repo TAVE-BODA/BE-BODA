@@ -1,7 +1,7 @@
 package com.codit.be_boda.chat.validator;
 
-import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.request.CastInfoRequest;
+import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.request.DentalInfoRequest;
 import com.codit.be_boda.chat.dto.request.HospitalizationInfoRequest;
 import com.codit.be_boda.chat.type.QuestionType;
@@ -41,7 +41,7 @@ public class ChatMessageRequestValidator {
     }
 
     private void validateChipOverview(ChatMessageRequest request) {
-        // 보장 개요 조회는 조건값 없이 가능
+        // 조건값 없이 가능
     }
 
     private void validateInsuranceCondition(ChatMessageRequest request) {
@@ -60,6 +60,14 @@ public class ChatMessageRequestValidator {
     private void validateConditionalTreatmentInfo(ChatMessageRequest request) {
         List<TreatmentType> treatmentTypes = request.getTreatmentTypes();
 
+        if (treatmentTypes.contains(TreatmentType.DIAGNOSIS_ONLY)) {
+            validateDiagnosisMessage(request);
+        }
+
+        if (treatmentTypes.contains(TreatmentType.DISABILITY)) {
+            validateDisabilityMessage(request);
+        }
+
         if (treatmentTypes.contains(TreatmentType.HOSPITALIZATION)) {
             validateHospitalizationInfo(request.getHospitalizationInfo());
         }
@@ -70,6 +78,18 @@ public class ChatMessageRequestValidator {
 
         if (treatmentTypes.contains(TreatmentType.DENTAL)) {
             validateDentalInfo(request.getDentalInfo());
+        }
+    }
+
+    private void validateDiagnosisMessage(ChatMessageRequest request) {
+        if (isBlank(request.getMessage())) {
+            throw invalidRequest("DIAGNOSIS_ONLY 선택 시 진단명을 message에 입력해야 합니다.");
+        }
+    }
+
+    private void validateDisabilityMessage(ChatMessageRequest request) {
+        if (isBlank(request.getMessage())) {
+            throw invalidRequest("DISABILITY 선택 시 장해 또는 후유장해 내용을 message에 입력해야 합니다.");
         }
     }
 
