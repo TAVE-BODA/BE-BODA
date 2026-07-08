@@ -28,7 +28,7 @@ public class DashboardService {
     public DashboardResponse getDashboard(Long analysisId) {
         PolicyAnalysis analysis = policyAnalysisRepository.findById(analysisId)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "분석 결과를 찾을 수 없습니다. analysisId=" + analysisId
+                        "증권 분석 결과를 찾을 수 없습니다. analysisId=" + analysisId
                 ));
 
         List<CoverageItem> coverageItems =
