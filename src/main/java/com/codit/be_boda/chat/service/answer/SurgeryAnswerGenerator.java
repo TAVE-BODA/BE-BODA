@@ -109,7 +109,7 @@ public class SurgeryAnswerGenerator {
                 .append(String.format("%,d원", amount.coverageAmount()))
                 .append("이에요.\n")
                 .append(getIncidentDescription(request))
-                .append("로 인정되면 이 금액을 받을 수 있어요.\n\n");
+                .append("로 인정되고, 수술확인서의 수술명이 약관상 지급 조건에 해당하면 이 금액이 지급 후보가 될 수 있어요.\n\n");
 
         answer.append("[계산 내역]\n")
                 .append("- ")
@@ -123,58 +123,91 @@ public class SurgeryAnswerGenerator {
         return answer.toString();
     }
 
-    // 입력된 사고 유형에 맞는 수술비 항목 찾기
+    // 입력된 사고 유형과 자유입력에 맞는 수술비 항목 찾기
     private CoverageItemDto findMatchedSurgeryItem(Long analysisId, ChatMessageRequest request) {
+        CoverageItemDto messageMatchedItem = findMessageMatchedSurgeryItem(analysisId, request);
+
+        if (messageMatchedItem != null) {
+            return messageMatchedItem;
+        }
+
+        return findIncidentMatchedSurgeryItem(analysisId, request);
+    }
+
+    // 자유입력 수술명 기준 후보 찾기
+    private CoverageItemDto findMessageMatchedSurgeryItem(Long analysisId, ChatMessageRequest request) {
+        List<String> messageKeywords = getMessageSurgeryKeywords(request.getMessage());
+
+        if (messageKeywords.isEmpty()) {
+            return null;
+        }
+
         List<CoverageItemInfo> coverageItems =
                 coverageItemQueryRepository.findByAnalysisId(analysisId);
 
         for (CoverageItemInfo coverageItem : coverageItems) {
-            if (!"수술".equals(coverageItem.coverageType())) {
+            if (!isSurgeryCoverage(coverageItem)) {
                 continue;
             }
 
             CoverageLlmResponse detail = parseCoverageDetail(coverageItem.detail());
 
             if (detail.items() == null || detail.items().isEmpty()) {
-                return null;
+                continue;
             }
 
-            String targetKeyword = getSurgeryKeyword(request);
-
-            return detail.items().stream()
-                    .filter(item -> item.coverageName() != null)
-                    .filter(item -> item.coverageName().contains(targetKeyword))
-                    .findFirst()
-                    .orElse(null);
+            for (CoverageItemDto item : detail.items()) {
+                for (String keyword : messageKeywords) {
+                    if (containsKeyword(item, keyword)) {
+                        return item;
+                    }
+                }
+            }
         }
 
         return null;
     }
 
-    // 사고 유형에 따라 질병 수술비 / 재해 수술비 키워드 선택
-    private String getSurgeryKeyword(ChatMessageRequest request) {
-        if (request.getIncidentType() != null
-                && "INJURY".equals(request.getIncidentType().name())) {
-            return "재해 수술비";
+    // 사고 유형 기준 기본 수술비 후보 찾기
+    private CoverageItemDto findIncidentMatchedSurgeryItem(Long analysisId, ChatMessageRequest request) {
+        List<String> incidentKeywords = getIncidentSurgeryKeywords(request);
+
+        List<CoverageItemInfo> coverageItems =
+                coverageItemQueryRepository.findByAnalysisId(analysisId);
+
+        for (CoverageItemInfo coverageItem : coverageItems) {
+            if (!isSurgeryCoverage(coverageItem)) {
+                continue;
+            }
+
+            CoverageLlmResponse detail = parseCoverageDetail(coverageItem.detail());
+
+            if (detail.items() == null || detail.items().isEmpty()) {
+                continue;
+            }
+
+            for (CoverageItemDto item : detail.items()) {
+                for (String keyword : incidentKeywords) {
+                    if (containsKeyword(item, keyword)) {
+                        return item;
+                    }
+                }
+            }
         }
 
-        if (request.getIncidentType() != null
-                && "DISEASE".equals(request.getIncidentType().name())) {
-            return "질병 수술비";
-        }
-
-        return "수술비";
+        return null;
     }
 
     // 사고 유형 문구 변환
     private String getIncidentDescription(ChatMessageRequest request) {
         if (request.getIncidentType() != null
                 && "INJURY".equals(request.getIncidentType().name())) {
-            return "재해";
+            return "재해 또는 상해";
         }
 
         if (request.getIncidentType() != null
-                && "DISEASE".equals(request.getIncidentType().name())) {
+                && ("DISEASE".equals(request.getIncidentType().name())
+                || "CHECKUP_FOUND".equals(request.getIncidentType().name()))) {
             return "질병";
         }
 
@@ -221,6 +254,81 @@ public class SurgeryAnswerGenerator {
         });
 
         return builder.toString();
+    }
+
+    private boolean isSurgeryCoverage(CoverageItemInfo coverageItem) {
+        return "수술".equals(coverageItem.coverageType());
+    }
+
+    // 자유입력에서 수술 관련 검색 키워드 추출
+    private List<String> getMessageSurgeryKeywords(String message) {
+        if (message == null || message.isBlank()) {
+            return List.of();
+        }
+
+        String normalizedMessage = normalize(message);
+
+        return List.of(
+                        "골절",
+                        "인대",
+                        "무릎",
+                        "아킬레스",
+                        "힘줄",
+                        "연골",
+                        "디스크",
+                        "관절",
+                        "척추",
+                        "충수",
+                        "맹장",
+                        "제왕절개",
+                        "절제",
+                        "봉합",
+                        "관혈",
+                        "비관혈"
+                ).stream()
+                .filter(keyword -> normalizedMessage.contains(normalize(keyword)))
+                .toList();
+    }
+
+    // 사고 유형별 기본 수술비 검색 키워드
+    private List<String> getIncidentSurgeryKeywords(ChatMessageRequest request) {
+        if (request.getIncidentType() == null) {
+            return List.of("수술비", "수술급여금", "수술");
+        }
+
+        if ("INJURY".equals(request.getIncidentType().name())) {
+            return List.of("재해수술비", "상해수술비", "재해수술", "상해수술");
+        }
+
+        if ("DISEASE".equals(request.getIncidentType().name())
+                || "CHECKUP_FOUND".equals(request.getIncidentType().name())) {
+            return List.of("질병수술비", "질병수술");
+        }
+
+        return List.of("수술비", "수술급여금", "수술");
+    }
+
+    private boolean containsKeyword(CoverageItemDto item, String keyword) {
+        String normalizedKeyword = normalize(keyword);
+
+        if (normalize(item.coverageName()).contains(normalizedKeyword)) {
+            return true;
+        }
+
+        if (item.amounts() == null || item.amounts().isEmpty()) {
+            return false;
+        }
+
+        return item.amounts().stream()
+                .anyMatch(amount -> normalize(amount.condition()).contains(normalizedKeyword));
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value.replaceAll("\\s+", "");
     }
 
     // detail JSON 파싱
