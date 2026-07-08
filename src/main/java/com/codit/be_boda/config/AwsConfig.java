@@ -7,8 +7,9 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.textract.TextractClient;
 
+// S3: PDF 임시 저장 + 원본 파기
+// OCR: 네이버 클로바 OCR (REST API)
 @Configuration
 public class AwsConfig {
 
@@ -24,15 +25,6 @@ public class AwsConfig {
     @Bean
     public S3Client s3Client() {
         return S3Client.builder()
-                .region(Region.of(region))
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKey, secretKey)))
-                .build();
-    }
-
-    @Bean
-    public TextractClient textractClient() {
-        return TextractClient.builder()
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(accessKey, secretKey)))
