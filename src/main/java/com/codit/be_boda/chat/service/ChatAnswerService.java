@@ -9,6 +9,7 @@ import com.codit.be_boda.chat.service.answer.DentalAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.DiagnosisAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.OutpatientAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.DisabilityAnswerGenerator;
+import com.codit.be_boda.chat.service.answer.DocumentAnswerGenerator;
 import com.codit.be_boda.chat.type.QuestionType;
 import com.codit.be_boda.chat.type.TreatmentType;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class ChatAnswerService {
     private final DiagnosisAnswerGenerator diagnosisAnswerGenerator; // 진단
     private final OutpatientAnswerGenerator outpatientAnswerGenerator; // 통원/외래
     private final DisabilityAnswerGenerator disabilityAnswerGenerator; // 장해/후유장해
+    private final DocumentAnswerGenerator documentAnswerGenerator; // 필요서류
 
     // ChatService에서 호출하는 메인 메서드
     public String generateAnswer(ChatSession chatSession, ChatMessageRequest request) {
@@ -37,7 +39,7 @@ public class ChatAnswerService {
         }
 
         if (request.getQuestionType() == QuestionType.CHIP_DOCUMENTS) {
-            return "필요 서류 안내는 약관 근거 확인이 필요해서 이후 단계에서 제공될 예정입니다.";
+            return documentAnswerGenerator.generateAnswer(chatSession.getTermsDocumentId(), request);
         }
 
         if (request.getQuestionType() == QuestionType.CHIP_OVERVIEW) {
