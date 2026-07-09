@@ -88,13 +88,13 @@ public class ChatService {
 
         ChatMessage savedUserMessage = chatMessageRepository.save(userMessage);
 
-        String aiAnswer = chatAnswerService.generateAnswer(chatSession, request);
+        ChatAnswerResult aiAnswer = chatAnswerService.generateAnswerResult(chatSession, request);
 
         ChatMessage aiMessage = new ChatMessage(
                 chatSession.getChatSessionId(),
                 SenderType.AI,
                 questionType,
-                aiAnswer,
+                aiAnswer.messageContent(),
                 false,
                 DEFAULT_DISCLAIMER
         );
@@ -104,7 +104,13 @@ public class ChatService {
         return ChatMessagePairResponse.of(
                 chatSession.getChatSessionId(),
                 ChatMessageResponse.from(savedUserMessage),
-                ChatMessageResponse.from(savedAiMessage)
+                ChatMessageResponse.from(
+                        savedAiMessage,
+                        aiAnswer.claimGuide(),
+                        aiAnswer.amountGuide(),
+                        aiAnswer.documentGuide(),
+                        aiAnswer.hasSources()
+                )
         );
     }
 
