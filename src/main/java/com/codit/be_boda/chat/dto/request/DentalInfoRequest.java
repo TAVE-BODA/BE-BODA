@@ -1,6 +1,8 @@
 package com.codit.be_boda.chat.dto.request;
 
 import com.codit.be_boda.chat.type.DentalTreatmentType;
+import com.codit.be_boda.chat.type.DentalTreatmentCountType;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -12,4 +14,7 @@ import java.util.List;
 public class DentalInfoRequest {
 
     private List<DentalTreatmentType> dentalTreatmentTypes;
+
+    private DentalTreatmentCountType dentalTreatmentCountType;
+    private Integer dentalTreatmentCount;
 }
