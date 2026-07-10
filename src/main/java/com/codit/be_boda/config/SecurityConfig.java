@@ -38,6 +38,8 @@ public class SecurityConfig {
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:3001",// 프론트 배포 시 EC2/도메인 주소 추가
+            "https://fe-boda.vercel.app/",
+            "https://fe-boda.vercel.app",
             "http://localhost:5173",
             "http://127.0.0.1:5173"
         ));
