@@ -83,7 +83,7 @@ jobs:
               --name boda-backend \
               --env-file /home/ubuntu/boda/.env \
               -p 127.0.0.1:8080:8080 \
-              --restart unless-stopped \    # (추가) EC2 재부팅 시 자동 재시작
+              --restart unless-stopped \
               boda-backend
 
             sleep 10
