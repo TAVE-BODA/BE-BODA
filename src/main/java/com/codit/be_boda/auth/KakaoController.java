@@ -4,6 +4,7 @@ import com.codit.be_boda.auth.dto.KakaoLoginResult;
 import com.codit.be_boda.auth.service.KakaoService;
 import com.codit.be_boda.auth.dto.LoginUser;
 import com.codit.be_boda.user.domain.User;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,9 +30,9 @@ public class KakaoController {
     @Value("${kakao.redirect-uri}")
     private String redirectUri;
 
-    // 프론트 배포 주소 환경변수로 관리
-    @Value("${app.front-url:http://localhost:5173}")
-    private String frontUrl;
+    // 프론트 URL 하드코딩 (환경변수 없이 관리)
+    private static final String FRONT_URL_LOCAL = "http://localhost:5173";
+    private static final String FRONT_URL_PROD  = "https://fe-boda.vercel.app";
 
     @GetMapping("/kakao/login")
     public String kakaoLogin() {
@@ -46,7 +47,9 @@ public class KakaoController {
     }
 
     @GetMapping("/callback")
-    public String callback(@RequestParam String code, HttpSession session) {
+    public String callback(@RequestParam String code,
+                           HttpSession session,
+                           HttpServletRequest httpRequest) {
         KakaoLoginResult result = kakaoService.loginOrCreateUser(code);
         User user = result.getUser();
 
@@ -60,7 +63,27 @@ public class KakaoController {
         session.setAttribute("loginUser", loginUser);
         session.setAttribute("kakaoAccessToken", result.getAccessToken());
 
+        // Referer 헤더로 로컬/배포 구분
+        String origin = (String) session.getAttribute("loginOrigin");
+        String frontUrl = (origin != null && origin.contains("localhost"))
+                ? FRONT_URL_LOCAL
+                : FRONT_URL_PROD;
+
         return "redirect:" + frontUrl + "/oauth/callback/kakao";
+    }
+
+    // 카카오 로그인 시작 시 origin 저장 (로컬/배포 구분용)
+    @GetMapping("/kakao/login/init")
+    @ResponseBody
+    public Map<String, Object> initLogin(HttpServletRequest httpRequest,
+                                         HttpSession session) {
+        String origin = httpRequest.getHeader("Origin");
+        if (origin != null) {
+            session.setAttribute("loginOrigin", origin);
+        }
+        Map<String, Object> response = new HashMap<>();
+        response.put("loginUrl", "/kakao/login");
+        return response;
     }
 
     @GetMapping("/me")
