@@ -6,6 +6,8 @@ import com.codit.be_boda.chat.repository.TermsChunkQueryRepository;
 import com.codit.be_boda.chat.repository.TermsChunkQueryRepository.TermsChunkInfo;
 import com.codit.be_boda.chat.type.IncidentType;
 import com.codit.be_boda.chat.type.TreatmentType;
+import com.codit.be_boda.chat.service.AnswerSource;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -41,8 +43,7 @@ public class DocumentAnswerGenerator {
                     "약관이 업로드되지 않아 약관 근거 보기는 제공되지 않아요."
             );
 
-            return new DocumentAnswerResult(messageContent, documentGuide, false);
-        }
+            return new DocumentAnswerResult(messageContent, documentGuide, false, List.of());        }
 
         List<String> requiredDocuments = buildRequiredDocuments(request);
         List<String> keywords = buildSearchKeywords(request);
@@ -55,6 +56,15 @@ public class DocumentAnswerGenerator {
                 );
 
         boolean hasEvidence = !evidenceChunks.isEmpty();
+
+        // 필요서류 약관 근거 source 생성
+        List<AnswerSource> sources = evidenceChunks.stream()
+                .map(chunk -> new AnswerSource(
+                        chunk.chunkId(),
+                        null,
+                        null
+                ))
+                .toList();
 
         String messageContent = hasEvidence
                 ? buildEvidenceBasedAnswer(requiredDocuments)
@@ -74,7 +84,8 @@ public class DocumentAnswerGenerator {
         return new DocumentAnswerResult(
                 messageContent,
                 documentGuide,
-                hasEvidence
+                hasEvidence,
+                sources
         );
     }
 

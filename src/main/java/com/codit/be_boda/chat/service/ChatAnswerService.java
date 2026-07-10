@@ -66,7 +66,8 @@ public class ChatAnswerService {
             return ChatAnswerResult.documents(
                     result.messageContent(),
                     result.documentGuide(),
-                    result.hasSources()
+                    result.hasSources(),
+                    result.sources()
             );
         }
 

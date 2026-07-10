@@ -9,6 +9,7 @@ import com.codit.be_boda.chat.dto.response.ChatMessageResponse;
 import com.codit.be_boda.chat.dto.response.ChatSessionResponse;
 import com.codit.be_boda.chat.entity.ChatMessage;
 import com.codit.be_boda.chat.entity.ChatSession;
+import com.codit.be_boda.chat.entity.ChatMessageSource;
 import com.codit.be_boda.chat.repository.ChatMessageRepository;
 import com.codit.be_boda.chat.repository.ChatSessionRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
@@ -18,6 +19,9 @@ import com.codit.be_boda.chat.type.SenderType;
 import com.codit.be_boda.chat.type.TreatmentStartDateType;
 import com.codit.be_boda.chat.type.TreatmentType;
 import com.codit.be_boda.chat.validator.ChatMessageRequestValidator;
+import com.codit.be_boda.chat.dto.response.ChatMessageSourceResponse;
+import com.codit.be_boda.chat.repository.ChatMessageSourceRepository;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +44,7 @@ public class ChatService {
     private final CoverageItemQueryRepository coverageItemQueryRepository;
     private final ChatMessageRequestValidator chatMessageRequestValidator;
     private final ChatAnswerService chatAnswerService;
+    private final ChatMessageSourceRepository chatMessageSourceRepository;
 
     @Transactional
     public ChatSessionResponse createSession(ChatSessionCreateRequest request) {
@@ -101,6 +106,8 @@ public class ChatService {
 
         ChatMessage savedAiMessage = chatMessageRepository.save(aiMessage);
 
+        saveMessageSources(savedAiMessage.getMessageId(), aiAnswer.sources());
+
         return ChatMessagePairResponse.of(
                 chatSession.getChatSessionId(),
                 ChatMessageResponse.from(savedUserMessage),
@@ -122,6 +129,102 @@ public class ChatService {
                 .stream()
                 .map(ChatMessageResponse::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ChatMessageSourceResponse getMessageSources(Long messageId) {
+        if (messageId == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "messageId는 필수입니다.");
+        }
+
+        ChatMessage chatMessage = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "존재하지 않는 메시지입니다."));
+
+        if (chatMessage.getSenderType() != SenderType.AI) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "AI 답변 메시지의 근거만 조회할 수 있습니다.");
+        }
+
+        ChatSession chatSession = findChatSession(chatMessage.getChatSessionId());
+
+        if (chatSession.getTermsDocumentId() == null) {
+            return ChatMessageSourceResponse.termsNotUploaded(messageId);
+        }
+
+        List<ChatMessageSourceRepository.MessageSourceInfo> sourceInfos =
+                chatMessageSourceRepository.findSourceInfosByMessageId(messageId);
+
+        if (sourceInfos.isEmpty()) {
+            return ChatMessageSourceResponse.sourceNotFound(messageId);
+        }
+
+        List<ChatMessageSourceResponse.SourceItem> sources = sourceInfos.stream()
+                .map(source -> ChatMessageSourceResponse.SourceItem.builder()
+                        .sourceId(source.getSourceId())
+                        .chunkId(source.getChunkId())
+                        .title(buildSourceTitle(source))
+                        .citedText(buildCitedText(source))
+                        .clauseType(source.getClauseType())
+                        .relevanceScore(source.getRelevanceScore())
+                        .build())
+                .toList();
+
+        return ChatMessageSourceResponse.available(messageId, sources);
+    }
+
+    // 약관 근거 제목 생성
+    private String buildSourceTitle(ChatMessageSourceRepository.MessageSourceInfo source) {
+        if (source.getRiderName() != null && !source.getRiderName().isBlank()
+                && source.getClauseNo() != null && !source.getClauseNo().isBlank()) {
+            StringBuilder title = new StringBuilder();
+
+            title.append(source.getRiderName())
+                    .append(" ")
+                    .append(source.getClauseNo());
+
+            if (source.getClauseTitle() != null && !source.getClauseTitle().isBlank()) {
+                title.append(" ").append(source.getClauseTitle());
+            }
+
+            return title.toString();
+        }
+
+        if (source.getSectionTitle() != null && !source.getSectionTitle().isBlank()) {
+            return source.getSectionTitle();
+        }
+
+        return "약관 근거";
+    }
+
+    // 약관 근거 본문 생성
+    private String buildCitedText(ChatMessageSourceRepository.MessageSourceInfo source) {
+        if (source.getCitedText() != null && !source.getCitedText().isBlank()) {
+            return source.getCitedText();
+        }
+
+        return source.getChunkText();
+    }
+
+    // AI 답변 약관 근거 저장
+    private void saveMessageSources(Long messageId, List<AnswerSource> sources) {
+        if (sources == null || sources.isEmpty()) {
+            return;
+        }
+
+        List<ChatMessageSource> messageSources = sources.stream()
+                .filter(source -> source.chunkId() != null)
+                .map(source -> new ChatMessageSource(
+                        messageId,
+                        source.chunkId(),
+                        source.citedText(),
+                        source.relevanceScore()
+                ))
+                .toList();
+
+        if (messageSources.isEmpty()) {
+            return;
+        }
+
+        chatMessageSourceRepository.saveAll(messageSources);
     }
 
     private ChatSession findChatSession(Long chatSessionId) {
