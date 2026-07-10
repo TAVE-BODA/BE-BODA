@@ -82,10 +82,13 @@ jobs:
             sudo docker run -d \
               --name boda-backend \
               --env-file /home/ubuntu/boda/.env \
-              -p 8080:8080 \
+              -p 127.0.0.1:8080:8080 \
+              --restart unless-stopped \    # (추가) EC2 재부팅 시 자동 재시작
               boda-backend
 
             sleep 10
+            
+            sudo docker image prune -f
 
             sudo docker ps --filter "name=boda-backend" --filter "status=running" | grep boda-backend
 
