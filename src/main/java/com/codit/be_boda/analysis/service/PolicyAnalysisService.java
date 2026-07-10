@@ -2,6 +2,8 @@ package com.codit.be_boda.analysis.service;
 
 import com.codit.be_boda.analysis.domain.CoverageItem;
 import com.codit.be_boda.analysis.domain.PolicyAnalysis;
+import com.codit.be_boda.chat.entity.ChatSessionPolicy;
+import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
 import com.codit.be_boda.analysis.repository.CoverageItemRepository;
 import com.codit.be_boda.analysis.repository.PolicyAnalysisRepository;
 import com.codit.be_boda.upload.service.S3Service;
@@ -34,6 +36,7 @@ public class PolicyAnalysisService {
 
     private final PolicyAnalysisRepository policyAnalysisRepository;
     private final CoverageItemRepository coverageItemRepository;
+    private final ChatSessionPolicyRepository chatSessionPolicyRepository;
     private final S3Service s3Service;
     private final OpenAiChatModel chatModel;
     private final ObjectMapper objectMapper;
@@ -48,7 +51,7 @@ public class PolicyAnalysisService {
     @Transactional
     public PolicyAnalysis createAndStartAnalysis(User user, String originalFileName,
                                                  String s3Key, boolean isOcr,
-                                                 String maskedText) {
+                                                 String maskedText, Long chatSessionId) {
         PolicyAnalysis analysis = PolicyAnalysis.builder()
                 .user(user)
                 .originalFileName(originalFileName)
@@ -60,13 +63,13 @@ public class PolicyAnalysisService {
         policyAnalysisRepository.save(analysis);
         log.info("[ANALYSIS] 증권 분석 레코드 생성 | analysisId={}", analysis.getId());
 
-        analyzeAsync(analysis);
+        analyzeAsync(analysis, chatSessionId);
         return analysis;
     }
 
     @Async
     @Transactional
-    public void analyzeAsync(PolicyAnalysis analysis) {
+    public void analyzeAsync(PolicyAnalysis analysis, Long chatSessionId) {
         long start = System.currentTimeMillis();
         log.info("[ANALYSIS] 증권 비동기 분석 시작 | analysisId={}", analysis.getId());
         analysis.startAnalysis();
@@ -80,6 +83,15 @@ public class PolicyAnalysisService {
 
             createCoverageCards(analysis);
             log.info("[ANALYSIS] 보장 카드 생성 완료 | {}ms", System.currentTimeMillis() - start);
+
+            // 채팅방 연결 (코드3 플로우: 업로드 시 chatSessionId 포함 시 중간 테이블 저장)
+            if (chatSessionId != null) {
+                chatSessionPolicyRepository.save(
+                        new ChatSessionPolicy(chatSessionId, analysis.getId())
+                );
+                log.info("[ANALYSIS] 채팅방 연결 완료 | chatSessionId={} analysisId={}",
+                        chatSessionId, analysis.getId());
+            }
 
             s3Service.deleteFile(analysis.getS3Key());
             analysis.deleteS3Key();

@@ -52,4 +52,9 @@ public class ChatSession {
     public boolean isFirstMessage() {
         return this.systemPrompt == null;
     }
+
+    // 약관 연결 (파싱 완료 후 자동 연결)
+    public void updateTermsDocument(Long termsDocumentId) {
+        this.termsDocumentId = termsDocumentId;
+    }
 }
