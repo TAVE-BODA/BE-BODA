@@ -146,7 +146,6 @@ COMMENT ON COLUMN coverage_item.coverage_type       IS '진단/수술/입원/실
 COMMENT ON COLUMN coverage_item.evidence_text       IS '약관 연결 후 RAG로 채워지는 근거 원문';
 COMMENT ON COLUMN coverage_item.detail              IS '카드 타입별 세부 데이터 JSONB';
 
-
 -- =============================================
 -- 4. terms_document (약관 리스트)
 --
@@ -326,6 +325,60 @@ CREATE TABLE chat_message_source (
 
 COMMENT ON TABLE  chat_message_source                 IS 'AI 답변에 사용된 RAG 근거 청크';
 COMMENT ON COLUMN chat_message_source.relevance_score IS '코사인 유사도 점수 (0.0~1.0)';
+
+
+
+-- =============================================
+-- 추가) dashboard (대시보드 요약)
+-- users와 N:1
+-- 하나의 대시보드는 여러 증권 분석 결과를 포함할 수 있음
+-- 분석 결과와의 연결은 dashboard_analysis 중간 테이블에서 관리
+-- =============================================
+
+CREATE TABLE dashboard (
+                           session_id             VARCHAR(255)    PRIMARY KEY,
+                           user_id                BIGINT          NOT NULL,
+
+                           insured_name           VARCHAR(100)    NOT NULL,
+                           analysis_completed_at  TIMESTAMP       NOT NULL,
+
+    -- policy_analysis.analysis_id 목록
+    -- 예: [2, 3, 4]
+                           analysis_ids           JSONB           NOT NULL DEFAULT '[]'::JSONB,
+
+    -- 예: ["삼성생명", "동양생명"]
+                           company_names          JSONB           NOT NULL DEFAULT '[]'::JSONB,
+
+    -- 보장 유형별 최소/최대 금액, 단위, 보험사명
+                           coverage_summaries     JSONB           NOT NULL DEFAULT '[]'::JSONB,
+
+                           created_at             TIMESTAMP       NOT NULL DEFAULT NOW(),
+                           updated_at             TIMESTAMP       NOT NULL DEFAULT NOW(),
+
+                           CONSTRAINT fk_dashboard_user
+                               FOREIGN KEY (user_id)
+                                   REFERENCES users(id)
+);
+
+COMMENT ON TABLE dashboard IS '채팅 세션별 보험증권 통합 대시보드';
+
+COMMENT ON COLUMN dashboard.session_id IS '채팅 세션 ID이자 대시보드 기본 키';
+
+COMMENT ON COLUMN dashboard.user_id IS '대시보드를 소유한 로그인 사용자';
+
+COMMENT ON COLUMN dashboard.insured_name IS 'policy_analysis에서 추출한 피보험자명';
+
+COMMENT ON COLUMN dashboard.analysis_completed_at IS '포함된 증권 분석의 완료 기준 일시';
+
+COMMENT ON COLUMN dashboard.analysis_ids IS '대시보드에 포함된 policy_analysis.analysis_id 목록 JSONB';
+
+COMMENT ON COLUMN dashboard.company_names IS '분석한 보험사명 목록 JSONB';
+
+COMMENT ON COLUMN dashboard.coverage_summaries IS '보장 유형별 최소금액, 최대금액, 보장단위, 보험사명 요약 JSONB';
+
+COMMENT ON COLUMN dashboard.created_at IS '대시보드 생성 일시';
+
+COMMENT ON COLUMN dashboard.updated_at IS '대시보드 마지막 수정 일시';
 
 
 -- =============================================

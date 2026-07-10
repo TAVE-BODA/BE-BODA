@@ -1,81 +1,59 @@
 package com.codit.be_boda.dashboard.service;
 
-import com.codit.be_boda.analysis.domain.CoverageItem;
-import com.codit.be_boda.analysis.domain.PolicyAnalysis;
-import com.codit.be_boda.dashboard.dto.CoverageCardResponse;
-import com.codit.be_boda.analysis.dto.CoverageItemDto;
+import com.codit.be_boda.dashboard.domain.Dashboard;
 import com.codit.be_boda.dashboard.dto.DashboardResponse;
-import com.codit.be_boda.analysis.repository.CoverageItemRepository;
-import com.codit.be_boda.analysis.repository.PolicyAnalysisRepository;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.codit.be_boda.dashboard.repository.DashboardRepository;
+import com.codit.be_boda.user.domain.User;
+import com.codit.be_boda.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.codit.be_boda.dashboard.dto.DashboardSummaryResponse;
-import com.codit.be_boda.dashboard.dto.DashboardCoverageSummaryResponse;
-
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Objects;
-
-import java.util.List;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DashboardService {
 
-    private final PolicyAnalysisRepository policyAnalysisRepository;
-    private final CoverageItemRepository coverageItemRepository;
-    private final ObjectMapper objectMapper;
+    private final DashboardRepository dashboardRepository;
+    private final UserRepository userRepository;
 
-    public DashboardResponse getDashboard(Long analysisId) {
-        PolicyAnalysis analysis = policyAnalysisRepository.findById(analysisId)
+//  저장된 대시보드 조회
+    public DashboardResponse getDashboard(String sessionId) {
+        Dashboard dashboard = dashboardRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "증권 분석 결과를 찾을 수 없습니다. analysisId=" + analysisId
+                        "대시보드를 찾을 수 없습니다. sessionId=" + sessionId
                 ));
 
-        List<CoverageItem> coverageItems =
-                coverageItemRepository.findByPolicyAnalysisOrderByCoverageType(analysis);
-
-        List<CoverageCardResponse> coverages = coverageItems.stream()
-                .map(this::toCoverageCardResponse)
-//                coverageItems 안에 있는 CoverageItem 하나하나를 CoverageCardResponse로 변환
-                .toList();
-//               변환된 결과를 다시 리스트로 모으기
-
-
-
-        return new DashboardResponse(
-                analysis.getId(),
-                analysis.getAnalysisStatus(),
-                analysis.getCompanyName(),
-                analysis.getInsuranceStartDate(),
-                analysis.getInsuranceEndDate(),
-                coverages
-        );
+        return DashboardResponse.from(dashboard);
     }
 
-//  CoverageItem Entity 하나를 CoverageCardResponse DTO 하나로 바꾸기
-    private CoverageCardResponse toCoverageCardResponse(CoverageItem item) {
-        Map<String, Object> detail = item.getDetail();
+//  대시보드 생성 및 저장
+    @Transactional
+    public DashboardResponse createDashboard(DashboardResponse request) {
 
-        List<CoverageItemDto> items = objectMapper.convertValue(
-                detail.get("items"),
-                new TypeReference<List<CoverageItemDto>>() {}
-        );
+        if (dashboardRepository.existsById(request.sessionId())) {
+            throw new IllegalArgumentException(
+                    "이미 존재하는 대시보드입니다. sessionId=" + request.sessionId()
+            );
+        }
 
-        return new CoverageCardResponse(
-                item.getCoverageType(),
-                item.getIsDetected(),
-                items,
-                item.getExclusionKeywords()
-        );
+        User user = userRepository.findById(request.userId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "사용자를 찾을 수 없습니다. userId=" + request.userId()
+                ));
+
+        Dashboard dashboard = Dashboard.builder()
+                .sessionId(request.sessionId())
+                .user(user)
+                .insuredName(request.insuredName())
+                .analysisCompletedAt(request.analysisCompletedAt())
+                .analysisIds(request.analysisIds())
+                .companyNames(request.companyNames())
+                .coverageSummaries(request.coverageSummaries())
+                .build();
+
+        Dashboard savedDashboard = dashboardRepository.save(dashboard);
+
+        return DashboardResponse.from(savedDashboard);
     }
-
-
 }
