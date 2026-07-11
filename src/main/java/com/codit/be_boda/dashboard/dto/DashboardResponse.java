@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public record DashboardResponse(
-        String sessionId,
+        String chatSessionId,
         Long userId,
         String insuredName,
         LocalDate analysisCompletedAt,
@@ -20,7 +20,7 @@ public record DashboardResponse(
 
     public static DashboardResponse from(Dashboard dashboard) {
         return new DashboardResponse(
-                dashboard.getSessionId(),
+                dashboard.getChatSessionId(),
                 dashboard.getUser().getId(),
                 dashboard.getInsuredName(),
                 dashboard.getAnalysisCompletedAt(),

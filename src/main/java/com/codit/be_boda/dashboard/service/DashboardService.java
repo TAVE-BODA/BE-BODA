@@ -31,9 +31,9 @@ public class DashboardService {
     @Transactional
     public DashboardResponse createDashboard(DashboardResponse request) {
 
-        if (dashboardRepository.existsById(request.sessionId())) {
+        if (dashboardRepository.existsById(request.chatSessionId())) {
             throw new IllegalArgumentException(
-                    "이미 존재하는 대시보드입니다. sessionId=" + request.sessionId()
+                    "이미 존재하는 대시보드입니다. sessionId=" + request.chatSessionId()
             );
         }
 
@@ -43,7 +43,7 @@ public class DashboardService {
                 ));
 
         Dashboard dashboard = Dashboard.builder()
-                .sessionId(request.sessionId())
+                .chatSessionId(request.chatSessionId())
                 .user(user)
                 .insuredName(request.insuredName())
                 .analysisCompletedAt(request.analysisCompletedAt())

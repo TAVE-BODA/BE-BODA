@@ -1,5 +1,6 @@
 package com.codit.be_boda.dashboard.domain;
 
+import com.codit.be_boda.chat.entity.ChatSession;
 import com.codit.be_boda.dashboard.dto.CoverageSummaryDto;
 import com.codit.be_boda.user.domain.User;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
@@ -23,8 +24,14 @@ public class Dashboard {
 
     //session_id를 PK로 사용
     @Id
-    @Column(name = "session_id", nullable = false, length = 255)
-    private String sessionId;
+    @Column(name = "chat_session_id", nullable = false, length = 255)
+    private String chatSessionId;
+
+//  채팅 세션 하나에 대시보드 하나만 연결
+    @MapsId
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "chat_session_id")
+    private ChatSession chatSession;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -56,7 +63,7 @@ public class Dashboard {
 
     @Builder
     private Dashboard(
-            String sessionId,
+            String chatSessionId,
             User user,
             String insuredName,
             LocalDate analysisCompletedAt,
@@ -64,7 +71,7 @@ public class Dashboard {
             List<String> companyNames,
             List<CoverageSummaryDto> coverageSummaries
     ) {
-        this.sessionId = sessionId;
+        this.chatSessionId = chatSessionId;
         this.user = user;
         this.insuredName = insuredName;
         this.analysisCompletedAt = analysisCompletedAt;
