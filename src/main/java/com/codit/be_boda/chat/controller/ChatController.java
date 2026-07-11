@@ -7,9 +7,13 @@ import com.codit.be_boda.chat.dto.response.ChatMessageResponse;
 import com.codit.be_boda.chat.dto.response.ChatSessionResponse;
 import com.codit.be_boda.chat.dto.response.ChatMessageSourceResponse;
 import com.codit.be_boda.chat.service.ChatService;
+import com.codit.be_boda.global.exception.BusinessException;
+import com.codit.be_boda.global.exception.ErrorCode;
+import com.codit.be_boda.auth.dto.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -26,16 +30,25 @@ public class ChatController {
 
     @Operation(
             summary = "채팅방 생성",
-            description = "증권 분석 ID 기준으로 채팅방을 생성합니다. analysis_status가 DONE인 경우에만 생성 가능합니다."
+            description = """
+                    채팅방을 생성합니다.
+                    
+                    case2 (기존 증권/약관 재사용): analysisIds + termsDocumentId 포함
+                    case3 (완전 새 채팅방): 빈 바디 또는 {} 전송
+                    """
     )
     @ApiResponse(responseCode = "200", description = "채팅방 생성 성공")
-    @ApiResponse(responseCode = "404", description = "존재하지 않는 증권 분석 ID")
+    @ApiResponse(responseCode = "401", description = "로그인 필요")
+    @ApiResponse(responseCode = "404", description = "존재하지 않는 증권 ID")
     @ApiResponse(responseCode = "409", description = "증권 분석 미완료")
     @PostMapping("/sessions")
     public ResponseEntity<ChatSessionResponse> createSession(
-            @RequestBody ChatSessionCreateRequest request
+            @RequestBody(required = false) ChatSessionCreateRequest request,
+            HttpSession session
     ) {
-        ChatSessionResponse response = chatService.createSession(request);
+        Long userId = getUserId(session);
+        ChatSessionCreateRequest req = request != null ? request : new ChatSessionCreateRequest();
+        ChatSessionResponse response = chatService.createSession(req, userId);
         return ResponseEntity.ok(response);
     }
 
@@ -82,5 +95,15 @@ public class ChatController {
     ) {
         ChatMessageSourceResponse response = chatService.getMessageSources(messageId);
         return ResponseEntity.ok(response);
+    }
+
+    // 로그인 필터 구현 전 임시 userId 추출
+    // LoginCheckFilter 완성 후 제거 예정
+    private Long getUserId(HttpSession session) {
+        LoginUser loginUser = (LoginUser) session.getAttribute("loginUser");
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED);
+        }
+        return loginUser.id();
     }
 }

@@ -7,10 +7,14 @@ import com.codit.be_boda.chat.dto.request.ChatSessionCreateRequest;
 import com.codit.be_boda.chat.dto.response.ChatMessagePairResponse;
 import com.codit.be_boda.chat.dto.response.ChatMessageResponse;
 import com.codit.be_boda.chat.dto.response.ChatSessionResponse;
+import com.codit.be_boda.chat.dto.response.ChatMessageSourceResponse;
 import com.codit.be_boda.chat.entity.ChatMessage;
-import com.codit.be_boda.chat.entity.ChatSession;
 import com.codit.be_boda.chat.entity.ChatMessageSource;
+import com.codit.be_boda.chat.entity.ChatSession;
+import com.codit.be_boda.chat.entity.ChatSessionPolicy;
 import com.codit.be_boda.chat.repository.ChatMessageRepository;
+import com.codit.be_boda.chat.repository.ChatMessageSourceRepository;
+import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
 import com.codit.be_boda.chat.repository.ChatSessionRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.PolicyAnalysisQueryRepository;
@@ -19,9 +23,6 @@ import com.codit.be_boda.chat.type.SenderType;
 import com.codit.be_boda.chat.type.TreatmentStartDateType;
 import com.codit.be_boda.chat.type.TreatmentType;
 import com.codit.be_boda.chat.validator.ChatMessageRequestValidator;
-import com.codit.be_boda.chat.dto.response.ChatMessageSourceResponse;
-import com.codit.be_boda.chat.repository.ChatMessageSourceRepository;
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,7 @@ public class ChatService {
             "실제 보험금 지급 여부는 보험사 심사 결과 및 약관에 따라 달라질 수 있습니다.";
 
     private final ChatSessionRepository chatSessionRepository;
+    private final ChatSessionPolicyRepository chatSessionPolicyRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final PolicyAnalysisQueryRepository policyAnalysisQueryRepository;
     private final CoverageItemQueryRepository coverageItemQueryRepository;
@@ -46,28 +48,40 @@ public class ChatService {
     private final ChatAnswerService chatAnswerService;
     private final ChatMessageSourceRepository chatMessageSourceRepository;
 
+    // case2: analysisIds 포함 → 생성과 동시에 중간 테이블 연결
+    // case3: 빈 바디 → 세션만 생성 (업로드 시 chatSessionId로 연결)
     @Transactional
-    public ChatSessionResponse createSession(ChatSessionCreateRequest request) {
-        if (request.getAnalysisId() == null) {
-            throw new BusinessException(ErrorCode.INVALID_REQUEST, "analysisId는 필수입니다.");
-        }
-
-        PolicyAnalysisQueryRepository.PolicyAnalysisInfo analysisInfo =
-                policyAnalysisQueryRepository.findInfoByAnalysisId(request.getAnalysisId())
-                        .orElseThrow(() -> new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND));
-
-        if (!DONE_STATUS.equals(analysisInfo.analysisStatus())) {
-            throw new BusinessException(ErrorCode.ANALYSIS_NOT_DONE);
-        }
-
+    public ChatSessionResponse createSession(ChatSessionCreateRequest request, Long userId) {
         ChatSession chatSession = new ChatSession(
-                analysisInfo.analysisId(),
-                analysisInfo.userId(),
+                userId,
                 request.getTermsDocumentId(),
                 DEFAULT_SESSION_TITLE
         );
-
         ChatSession savedSession = chatSessionRepository.save(chatSession);
+
+        List<Long> analysisIds = request.getAnalysisIds();
+        if (analysisIds != null && !analysisIds.isEmpty()) {
+            List<PolicyAnalysisQueryRepository.PolicyAnalysisInfo> analysisInfos =
+                    policyAnalysisQueryRepository.findInfoByAnalysisIds(analysisIds);
+
+            if (analysisInfos.size() != analysisIds.size()) {
+                throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
+            }
+
+            boolean allDone = analysisInfos.stream()
+                    .allMatch(info -> DONE_STATUS.equals(info.analysisStatus()));
+            if (!allDone) {
+                throw new BusinessException(ErrorCode.ANALYSIS_NOT_DONE);
+            }
+
+            for (Long analysisId : analysisIds) {
+                chatSessionPolicyRepository.save(
+                        new ChatSessionPolicy(savedSession.getChatSessionId(), analysisId)
+                );
+            }
+
+            return ChatSessionResponse.from(savedSession, analysisIds);
+        }
 
         return ChatSessionResponse.from(savedSession);
     }
@@ -77,8 +91,15 @@ public class ChatService {
         chatMessageRequestValidator.validate(request);
 
         ChatSession chatSession = findChatSession(chatSessionId);
-
         QuestionType questionType = request.getQuestionType();
+
+        // 첫 번째 질문이면 설문 데이터로 system_prompt 조립 후 저장
+        // 이후 질문부터는 저장된 system_prompt 재사용 (설문 미전송)
+        if (chatSession.isFirstMessage()) {
+            String systemPrompt = buildSystemPrompt(request);
+            chatSession.saveSystemPrompt(systemPrompt);
+            chatSessionRepository.save(chatSession);
+        }
 
         String userMessageContent = buildUserMessageContent(questionType, request);
 
@@ -171,40 +192,31 @@ public class ChatService {
         return ChatMessageSourceResponse.available(messageId, sources);
     }
 
-    // 약관 근거 제목 생성
     private String buildSourceTitle(ChatMessageSourceRepository.MessageSourceInfo source) {
         if (source.getRiderName() != null && !source.getRiderName().isBlank()
                 && source.getClauseNo() != null && !source.getClauseNo().isBlank()) {
             StringBuilder title = new StringBuilder();
-
             title.append(source.getRiderName())
                     .append(" ")
                     .append(source.getClauseNo());
-
             if (source.getClauseTitle() != null && !source.getClauseTitle().isBlank()) {
                 title.append(" ").append(source.getClauseTitle());
             }
-
             return title.toString();
         }
-
         if (source.getSectionTitle() != null && !source.getSectionTitle().isBlank()) {
             return source.getSectionTitle();
         }
-
         return "약관 근거";
     }
 
-    // 약관 근거 본문 생성
     private String buildCitedText(ChatMessageSourceRepository.MessageSourceInfo source) {
         if (source.getCitedText() != null && !source.getCitedText().isBlank()) {
             return source.getCitedText();
         }
-
         return source.getChunkText();
     }
 
-    // AI 답변 약관 근거 저장
     private void saveMessageSources(Long messageId, List<AnswerSource> sources) {
         if (sources == null || sources.isEmpty()) {
             return;
@@ -231,9 +243,72 @@ public class ChatService {
         if (chatSessionId == null) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "chatSessionId는 필수입니다.");
         }
-
         return chatSessionRepository.findById(chatSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_SESSION_NOT_FOUND));
+    }
+
+    // TODO: 설문 수정시 변경되어야될 부분 이쪽.
+    private String buildSystemPrompt(ChatMessageRequest request) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[사용자 상황 정보]\n");
+
+        if (request.getIncidentType() != null) {
+            String incidentLabel = switch (request.getIncidentType()) {
+                case INJURY        -> "다쳤어요 (재해)";
+                case DISEASE       -> "아파서 병원에 갔어요 (질병)";
+                case CHECKUP_FOUND -> "검진에서 발견됐어요";
+            };
+            sb.append("- 발생 상황: ").append(incidentLabel).append("\n");
+        }
+
+        if (request.getTreatmentTypes() != null && !request.getTreatmentTypes().isEmpty()) {
+            sb.append("- 받은 치료: ");
+            StringJoiner joiner = new StringJoiner(", ");
+            for (TreatmentType t : request.getTreatmentTypes()) {
+                String label = switch (t) {
+                    case DIAGNOSIS_ONLY  -> "진단만 받았어요";
+                    case SURGERY         -> "수술";
+                    case HOSPITALIZATION -> "입원";
+                    case OUTPATIENT      -> "통원/외래";
+                    case CAST            -> "깁스/고정";
+                    case DENTAL          -> "치아 치료";
+                    case DISABILITY      -> "장해/후유장해";
+                };
+                joiner.add(label);
+            }
+            sb.append(joiner).append("\n");
+        }
+
+        if (request.getHospitalizationInfo() != null) {
+            sb.append("- 입원 정보: ")
+                    .append("병원 종류=").append(request.getHospitalizationInfo().getHospitalType())
+                    .append(", 병실=").append(request.getHospitalizationInfo().getRoomType())
+                    .append(", 입원 기간=").append(request.getHospitalizationInfo().getHospitalizedNights()).append("박\n");
+        }
+
+        if (request.getCastInfo() != null) {
+            sb.append("- 깁스 정보: ")
+                    .append("부위=").append(request.getCastInfo().getCastInjuryPartType())
+                    .append(", 깁스 방식=").append(request.getCastInfo().getCastType()).append("\n");
+        }
+
+        if (request.getDentalInfo() != null
+                && request.getDentalInfo().getDentalTreatmentTypes() != null
+                && !request.getDentalInfo().getDentalTreatmentTypes().isEmpty()) {
+            sb.append("- 치아 치료: ").append(request.getDentalInfo().getDentalTreatmentTypes()).append("\n");
+        }
+
+        if (request.getTreatmentStartDateType() != null) {
+            if (request.getTreatmentStartDateType() == TreatmentStartDateType.EXACT_DATE) {
+                sb.append("- 치료 시작일: ").append(request.getTreatmentStartDate()).append("\n");
+            } else if (request.getTreatmentStartDateType() == TreatmentStartDateType.YEAR_MONTH) {
+                sb.append("- 치료 시작 시점: ")
+                        .append(request.getTreatmentStartYear()).append("년 ")
+                        .append(request.getTreatmentStartMonth()).append("월\n");
+            }
+        }
+
+        return sb.toString().trim();
     }
 
     private String buildUserMessageContent(QuestionType questionType, ChatMessageRequest request) {
@@ -259,30 +334,21 @@ public class ChatService {
 
         if (request.getHospitalizationInfo() != null) {
             builder.append("- 입원 정보: ")
-                    .append("병원 종류=")
-                    .append(request.getHospitalizationInfo().getHospitalType())
-                    .append(", 병실=")
-                    .append(request.getHospitalizationInfo().getRoomType())
-                    .append(", 입원 기간=")
-                    .append(request.getHospitalizationInfo().getHospitalizedNights())
-                    .append("박\n");
+                    .append("병원 종류=").append(request.getHospitalizationInfo().getHospitalType())
+                    .append(", 병실=").append(request.getHospitalizationInfo().getRoomType())
+                    .append(", 입원 기간=").append(request.getHospitalizationInfo().getHospitalizedNights()).append("박\n");
         }
 
         if (request.getCastInfo() != null) {
             builder.append("- 깁스 정보: ")
-                    .append("부위=")
-                    .append(request.getCastInfo().getCastInjuryPartType())
-                    .append(", 깁스 방식=")
-                    .append(request.getCastInfo().getCastType())
-                    .append("\n");
+                    .append("부위=").append(request.getCastInfo().getCastInjuryPartType())
+                    .append(", 깁스 방식=").append(request.getCastInfo().getCastType()).append("\n");
         }
 
         if (request.getDentalInfo() != null
                 && request.getDentalInfo().getDentalTreatmentTypes() != null
                 && !request.getDentalInfo().getDentalTreatmentTypes().isEmpty()) {
-            builder.append("- 치아 치료: ")
-                    .append(request.getDentalInfo().getDentalTreatmentTypes())
-                    .append("\n");
+            builder.append("- 치아 치료: ").append(request.getDentalInfo().getDentalTreatmentTypes()).append("\n");
         }
 
         appendTreatmentStartDate(builder, request);
@@ -292,119 +358,72 @@ public class ChatService {
 
     private String getDefaultUserQuestion(QuestionType questionType) {
         return switch (questionType) {
-            case CHIP_CLAIM -> "청구 가능한지 먼저 알고 싶어요";
-            case CHIP_AMOUNT -> "예상 보험금을 먼저 알고 싶어요";
+            case CHIP_CLAIM     -> "청구 가능한지 먼저 알고 싶어요";
+            case CHIP_AMOUNT    -> "예상 보험금을 먼저 알고 싶어요";
             case CHIP_DOCUMENTS -> "필요 서류를 먼저 알고 싶어요";
-            case CHIP_OVERVIEW -> "내 보험의 보장 항목부터 보고싶어요";
-            case FREE_TEXT -> "직접 입력할게요";
+            case CHIP_OVERVIEW  -> "내 보험의 보장 항목부터 보고싶어요";
+            case FREE_TEXT      -> "직접 입력할게요";
         };
     }
 
     private String joinTreatmentTypes(List<TreatmentType> treatmentTypes) {
         StringJoiner joiner = new StringJoiner(", ");
-
         for (TreatmentType treatmentType : treatmentTypes) {
             joiner.add(treatmentType.name());
         }
-
         return joiner.toString();
     }
 
     private void appendTreatmentStartDate(StringBuilder builder, ChatMessageRequest request) {
-        if (request.getTreatmentStartDateType() == null) {
-            return;
-        }
-
+        if (request.getTreatmentStartDateType() == null) return;
         if (request.getTreatmentStartDateType() == TreatmentStartDateType.EXACT_DATE) {
-            builder.append("- 치료 시작일: ")
-                    .append(request.getTreatmentStartDate())
-                    .append("\n");
-            return;
-        }
-
-        if (request.getTreatmentStartDateType() == TreatmentStartDateType.YEAR_MONTH) {
+            builder.append("- 치료 시작일: ").append(request.getTreatmentStartDate()).append("\n");
+        } else if (request.getTreatmentStartDateType() == TreatmentStartDateType.YEAR_MONTH) {
             builder.append("- 치료 시작 시점: ")
-                    .append(request.getTreatmentStartYear())
-                    .append("년 ")
-                    .append(request.getTreatmentStartMonth())
-                    .append("월\n");
+                    .append(request.getTreatmentStartYear()).append("년 ")
+                    .append(request.getTreatmentStartMonth()).append("월\n");
         }
     }
 
-    private String generateAiAnswer(
-            ChatSession chatSession,
-            QuestionType questionType,
-            ChatMessageRequest request
-    ) {
-        return switch (questionType) {
-            case CHIP_CLAIM -> generateClaimAnswer();
-            case CHIP_AMOUNT -> generateAmountAnswer();
-            case CHIP_DOCUMENTS -> generateDocumentsAnswer();
-            case CHIP_OVERVIEW -> generateOverviewAnswer(chatSession.getAnalysisId());
-            case FREE_TEXT -> generateFreeTextAnswer();
-        };
-    }
+    private String generateOverviewAnswer(Long chatSessionId) {
+        List<Long> analysisIds = chatSessionPolicyRepository
+                .findByChatSessionId(chatSessionId)
+                .stream()
+                .map(ChatSessionPolicy::getAnalysisId)
+                .toList();
 
-    private String generateClaimAnswer() {
-        return """
-                입력하신 사고 및 치료 정보를 기준으로 보험금 청구 가능 여부를 확인해볼 수 있습니다.
-                
-                현재 단계에서는 증권 분석 결과와 사용자 입력 조건을 저장하는 1차 구현 상태입니다.
-                이후 약관 RAG가 연결되면 해당 특약의 지급 사유, 면책 조건, 보장 기간을 함께 확인해 청구 가능성을 판단할 예정입니다.
-                """;
-    }
-
-    private String generateAmountAnswer() {
-        return """
-                예상 보험금은 가입한 특약, 보장 한도, 입원 일수, 수술 종류, 진단 조건에 따라 달라질 수 있습니다.
-                
-                현재는 입력하신 치료 정보와 증권의 보장 카드 정보를 바탕으로 예상 금액 산정 로직을 연결하기 전 단계입니다.
-                이후 coverage_item의 detail 정보와 약관 근거를 함께 사용해 예상 보험금을 계산할 예정입니다.
-                """;
-    }
-
-    private String generateDocumentsAnswer() {
-        return """
-                일반적으로 보험금 청구에는 진단서, 진료비 영수증, 진료비 세부내역서, 입퇴원확인서, 수술확인서 등이 필요할 수 있습니다.
-                
-                다만 필요한 서류는 치료 유형과 보험사 기준에 따라 달라질 수 있으므로, 이후 약관 및 보험사별 청구 기준과 연결해 안내할 예정입니다.
-                """;
-    }
-
-    private String generateOverviewAnswer(Long analysisId) {
-        List<CoverageItemQueryRepository.CoverageItemInfo> coverageItems =
-                coverageItemQueryRepository.findByAnalysisId(analysisId);
-
-        if (coverageItems.isEmpty()) {
-            return "현재 증권 분석 결과에서 조회 가능한 보장 카드가 없습니다.";
+        if (analysisIds.isEmpty()) {
+            return "현재 채팅방에 연결된 증권이 없습니다.";
         }
 
         StringBuilder builder = new StringBuilder();
         builder.append("현재 증권에서 확인된 보장 카드 목록입니다.\n\n");
 
-        for (CoverageItemQueryRepository.CoverageItemInfo item : coverageItems) {
-            builder.append("- ")
-                    .append(item.coverageType())
-                    .append(" / 탐지 여부: ")
-                    .append(item.isDetected())
-                    .append("\n");
+        for (Long analysisId : analysisIds) {
+            List<CoverageItemQueryRepository.CoverageItemInfo> coverageItems =
+                    coverageItemQueryRepository.findByAnalysisId(analysisId);
 
-            if (item.detail() != null && !item.detail().isBlank()) {
-                builder.append("  세부 정보: ")
-                        .append(item.detail())
-                        .append("\n");
+            if (coverageItems.isEmpty()) continue;
+
+            if (analysisIds.size() > 1) {
+                builder.append("[증권 ID: ").append(analysisId).append("]\n");
             }
+
+            for (CoverageItemQueryRepository.CoverageItemInfo item : coverageItems) {
+                builder.append("- ")
+                        .append(item.coverageType())
+                        .append(" / 탐지 여부: ")
+                        .append(item.isDetected())
+                        .append("\n");
+                if (item.detail() != null && !item.detail().isBlank()) {
+                    builder.append("  세부 정보: ").append(item.detail()).append("\n");
+                }
+            }
+            builder.append("\n");
         }
 
-        return builder.toString().trim();
-    }
-
-    private String generateFreeTextAnswer() {
-        return """
-                입력하신 질문을 확인했습니다.
-                
-                현재는 자유 질문에 대해 실제 약관 근거를 검색하기 전 단계입니다.
-                이후 RAG 검색이 연결되면 관련 약관 조항과 증권 분석 결과를 함께 참고해 답변할 예정입니다.
-                """;
+        return builder.toString().isBlank()
+                ? "현재 증권 분석 결과에서 조회 가능한 보장 카드가 없습니다."
+                : builder.toString().trim();
     }
 }

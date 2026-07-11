@@ -9,6 +9,8 @@ public enum ErrorCode {
 
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "잘못된 요청입니다."),
 
+    UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다."),
+
     ANALYSIS_NOT_FOUND(HttpStatus.NOT_FOUND, "ANALYSIS_NOT_FOUND", "존재하지 않는 증권 분석 ID입니다."),
     ANALYSIS_NOT_DONE(HttpStatus.CONFLICT, "ANALYSIS_NOT_DONE", "아직 증권 분석이 완료되지 않았습니다."),
 
