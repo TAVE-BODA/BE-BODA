@@ -69,7 +69,8 @@ public class KakaoController {
                 ? FRONT_URL_LOCAL
                 : FRONT_URL_PROD;
 
-        return "redirect:" + frontUrl + "/oauth/callback/kakao";
+        //return "redirect:" + frontUrl + "/oauth/callback/kakao";
+        return "redirect:" + frontUrl + "/home";
     }
 
     // 카카오 로그인 시작 시 origin 저장 (로컬/배포 구분용)
