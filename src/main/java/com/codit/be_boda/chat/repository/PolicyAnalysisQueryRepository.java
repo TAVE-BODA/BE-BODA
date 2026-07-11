@@ -20,7 +20,7 @@ public class PolicyAnalysisQueryRepository {
     public Optional<PolicyAnalysisInfo> findInfoByAnalysisId(Long analysisId) {
         String sql = """
                 SELECT analysis_id, user_id, analysis_status
-                FROM policy_analysis
+                FROM policy_analysis``
                 WHERE analysis_id = ?
                 """;
 
