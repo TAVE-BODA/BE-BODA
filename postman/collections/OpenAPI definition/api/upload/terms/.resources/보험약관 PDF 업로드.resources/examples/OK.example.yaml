@@ -1,0 +1,24 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/upload/terms?chatSessionId=8002"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Accept: "*/*"
+  queryParams:
+    chatSessionId: "8002"
+  body:
+    type: json
+    content: |-
+      {
+        "file": "string"
+      }
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: "*/*"
+  body:
+    type: text
+    content: "{}"
+order: 1000

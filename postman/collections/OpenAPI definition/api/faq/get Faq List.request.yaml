@@ -1,0 +1,8 @@
+$kind: http-request
+description: FAQ 목록을 조회합니다.
+url: "{{baseUrl}}/api/faq"
+method: GET
+headers:
+  Accept: "*/*"
+examples: ./.resources/get Faq List.resources/examples
+order: 1000

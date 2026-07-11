@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{baseUrl}}/logout"
+method: GET
+headers:
+  Accept: "*/*"
+examples: ./.resources/logout.resources/examples
+order: 1000

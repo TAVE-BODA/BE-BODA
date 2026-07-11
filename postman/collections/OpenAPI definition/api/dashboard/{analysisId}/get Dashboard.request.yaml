@@ -1,0 +1,9 @@
+$kind: http-request
+url: "{{baseUrl}}/api/dashboard/:analysisId"
+method: GET
+headers:
+  Accept: "*/*"
+pathVariables:
+  analysisId: "8002"
+examples: ./.resources/get Dashboard.resources/examples
+order: 1000
