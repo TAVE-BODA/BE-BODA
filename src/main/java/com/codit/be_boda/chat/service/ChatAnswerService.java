@@ -2,6 +2,8 @@ package com.codit.be_boda.chat.service;
 
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.entity.ChatSession;
+import com.codit.be_boda.chat.entity.ChatSessionPolicy;
+import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
 import com.codit.be_boda.chat.service.answer.CastAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.SurgeryAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.HospitalizationAnswerGenerator;
@@ -15,27 +17,39 @@ import com.codit.be_boda.chat.type.TreatmentType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class ChatAnswerService {
 
-    private final CastAnswerGenerator castAnswerGenerator; // 골절
-    private final SurgeryAnswerGenerator surgeryAnswerGenerator; // 수술
-    private final HospitalizationAnswerGenerator hospitalizationAnswerGenerator; // 입원
-    private final DentalAnswerGenerator dentalAnswerGenerator; // 치아
-    private final DiagnosisAnswerGenerator diagnosisAnswerGenerator; // 진단
-    private final OutpatientAnswerGenerator outpatientAnswerGenerator; // 통원/외래
-    private final DisabilityAnswerGenerator disabilityAnswerGenerator; // 장해/후유장해
-    private final DocumentAnswerGenerator documentAnswerGenerator; // 필요서류
+    private final ChatSessionPolicyRepository chatSessionPolicyRepository;
+    private final CastAnswerGenerator castAnswerGenerator;
+    private final SurgeryAnswerGenerator surgeryAnswerGenerator;
+    private final HospitalizationAnswerGenerator hospitalizationAnswerGenerator;
+    private final DentalAnswerGenerator dentalAnswerGenerator;
+    private final DiagnosisAnswerGenerator diagnosisAnswerGenerator;
+    private final OutpatientAnswerGenerator outpatientAnswerGenerator;
+    private final DisabilityAnswerGenerator disabilityAnswerGenerator;
+    private final DocumentAnswerGenerator documentAnswerGenerator;
 
-    // ChatService에서 호출하는 메인 메서드
     public String generateAnswer(ChatSession chatSession, ChatMessageRequest request) {
+        // 채팅방에 연결된 증권 ID 목록 조회
+        List<Long> analysisIds = chatSessionPolicyRepository
+                .findByChatSessionId(chatSession.getChatSessionId())
+                .stream()
+                .map(ChatSessionPolicy::getAnalysisId)
+                .toList();
+
+        // 증권이 여러 개면 첫 번째 기준으로 처리
+        Long analysisId = analysisIds.isEmpty() ? null : analysisIds.get(0);
+
         if (request.getQuestionType() == QuestionType.CHIP_CLAIM) {
-            return generateClaimAnswer(chatSession.getAnalysisId(), request);
+            return generateClaimAnswer(analysisId, request);
         }
 
         if (request.getQuestionType() == QuestionType.CHIP_AMOUNT) {
-            return generateAmountAnswer(chatSession.getAnalysisId(), request);
+            return generateAmountAnswer(analysisId, request);
         }
 
         if (request.getQuestionType() == QuestionType.CHIP_DOCUMENTS) {
