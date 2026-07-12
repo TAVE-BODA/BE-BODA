@@ -47,7 +47,7 @@ public class DashboardService {
         return sessionPolicies;
     }
 
-    // chat_session_policy 여러 행에서 analysisId 목록 추출
+    // 동일한 chat_session_policy에 대해 analysisId 목록을 analysis_ids에 list 타입으로 추출
     private List<Long> extractAnalysisIds(
             List<ChatSessionPolicy> sessionPolicies
     ) {
