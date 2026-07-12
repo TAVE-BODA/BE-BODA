@@ -13,6 +13,12 @@ spring:
 server:
   forward-headers-strategy: framework
   port: 8080
+  servlet:
+    session:
+      cookie:
+        same-site: none
+        secure: true
+        http-only: true
 
 kakao:
   client-id: ${KAKAO_CLIENT_ID}
