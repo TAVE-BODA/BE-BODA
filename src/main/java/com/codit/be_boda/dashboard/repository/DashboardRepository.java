@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface DashboardRepository extends JpaRepository<Dashboard, String> {
+public interface DashboardRepository extends JpaRepository<Dashboard, Long> {
 
     List<Dashboard> findByUser_Id(Long userId);
 }

@@ -24,14 +24,14 @@ public class DashboardController {
     }
 
     // 먼저 대시보드 조회
-    @GetMapping("/summary/{sessionId}")
+    @GetMapping("/summary/{chatSessionId}")
     public DashboardResponse getDashboard(
-            @PathVariable String sessionId
+            @PathVariable Long chatSessionId
     ) {
-        return dashboardService.getDashboard(sessionId);
+        return dashboardService.getDashboard(chatSessionId);
     }
 
-    // 사용자가 카드 클릭 후 증권분석 상세 조회
+    // 대시보드에 들어있는 증권분석id로 각 증권별 카드 조회
     @GetMapping("/analysis/{analysisId}")
     public DashcardResponse getDashcard(
             @PathVariable Long analysisId

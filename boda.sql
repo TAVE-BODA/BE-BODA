@@ -336,7 +336,7 @@ COMMENT ON COLUMN chat_message_source.relevance_score IS '코사인 유사도 �
 -- =============================================
 
 CREATE TABLE dashboard (
-                           chat_session_id             VARCHAR(255)    PRIMARY KEY,
+                           chat_session_id        VARCHAR(255)    PRIMARY KEY,
                            user_id                BIGINT          NOT NULL,
 
                            insured_name           VARCHAR(100)    NOT NULL,
