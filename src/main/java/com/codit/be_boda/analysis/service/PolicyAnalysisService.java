@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.codit.be_boda.dashboard.service.DashboardService;
 
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,7 @@ public class PolicyAnalysisService {
     private final S3Service s3Service;
     private final OpenAiChatModel chatModel;
     private final ObjectMapper objectMapper;
+    private final DashboardService dashboardService; //대시보드 자동 생성
 
     @Value("${app.llm.mini-model:gpt-4o-mini}")
     private String miniModel;
@@ -61,6 +63,16 @@ public class PolicyAnalysisService {
                 .build();
 
         policyAnalysisRepository.save(analysis);
+
+        // 분석 시작 전에 채팅방과 analysisId 연결
+        // 채팅방 연결 (코드3 플로우: 업로드 시 chatSessionId 포함 시 중간 테이블 저장)
+        if (chatSessionId != null) {
+            chatSessionPolicyRepository.save(
+                    new ChatSessionPolicy(chatSessionId, analysis.getId())
+            );
+
+        }
+
         log.info("[ANALYSIS] 증권 분석 레코드 생성 | analysisId={}", analysis.getId());
 
         analyzeAsync(analysis, chatSessionId);
@@ -75,33 +87,85 @@ public class PolicyAnalysisService {
         analysis.startAnalysis();
         policyAnalysisRepository.save(analysis);
 
+//        try {
+//            Map<String, Object> extractedData = extractPolicyInfo(analysis.getMaskedText());
+//            analysis.completeAnalysis(extractedData);
+//            policyAnalysisRepository.save(analysis);
+//            log.info("[ANALYSIS] 증권 기본 정보 추출 완료 | {}ms", System.currentTimeMillis() - start);
+//
+//            createCoverageCards(analysis);
+//            log.info("[ANALYSIS] 보장 카드 생성 완료 | {}ms", System.currentTimeMillis() - start);
+//
+////          모든 증권 분석이 COMPLETE이면 대시보드 생성
+//            if (chatSessionId != null) {
+//                Long userId = analysis.getUser().getId();
+//
+//                dashboardService.createDashboardIfReady(
+//                        chatSessionId,
+//                        userId
+//                );
+//            }
+//
+//            s3Service.deleteFile(analysis.getS3Key());
+//            analysis.deleteS3Key();
+//            policyAnalysisRepository.save(analysis);
+//            log.info("[ANALYSIS] 증권 분석 전체 완료 | 총{}ms", System.currentTimeMillis() - start);
+//
+//        } catch (Exception e) {
+//            analysis.failAnalysis(e.getMessage());
+//            policyAnalysisRepository.save(analysis);
+//            log.error("[ANALYSIS] 증권 분석 실패 | {}", e.getMessage(), e);
+//        }
         try {
-            Map<String, Object> extractedData = extractPolicyInfo(analysis.getMaskedText());
+            Map<String, Object> extractedData =
+                    extractPolicyInfo(analysis.getMaskedText());
+            log.info(
+                    "[ANALYSIS] 증권 기본 정보 추출 완료 | {}ms",
+                    System.currentTimeMillis() - start
+            );
+
+            // 먼저 CoverageItem 6종 생성 및 저장
+            createCoverageCards(analysis);
+            log.info(
+                    "[ANALYSIS] 보장 카드 생성 완료 | {}ms",
+                    System.currentTimeMillis() - start
+            );
+
+            // CoverageItem 저장이 끝난 뒤 COMPLETE 상태로 변경
             analysis.completeAnalysis(extractedData);
             policyAnalysisRepository.save(analysis);
-            log.info("[ANALYSIS] 증권 기본 정보 추출 완료 | {}ms", System.currentTimeMillis() - start);
 
-            createCoverageCards(analysis);
-            log.info("[ANALYSIS] 보장 카드 생성 완료 | {}ms", System.currentTimeMillis() - start);
+            log.info(
+                    "[ANALYSIS] 증권 분석 상태 COMPLETE 변경 | analysisId={}",
+                    analysis.getId()
+            );
 
-            // 채팅방 연결 (코드3 플로우: 업로드 시 chatSessionId 포함 시 중간 테이블 저장)
+            // 모든 증권 분석이 COMPLETE이면 대시보드 생성
             if (chatSessionId != null) {
-                chatSessionPolicyRepository.save(
-                        new ChatSessionPolicy(chatSessionId, analysis.getId())
+                Long userId = analysis.getUser().getId();
+
+                dashboardService.createDashboardIfReady(
+                        chatSessionId,
+                        userId
                 );
-                log.info("[ANALYSIS] 채팅방 연결 완료 | chatSessionId={} analysisId={}",
-                        chatSessionId, analysis.getId());
             }
 
             s3Service.deleteFile(analysis.getS3Key());
             analysis.deleteS3Key();
             policyAnalysisRepository.save(analysis);
-            log.info("[ANALYSIS] 증권 분석 전체 완료 | 총{}ms", System.currentTimeMillis() - start);
+            log.info(
+                    "[ANALYSIS] 증권 분석 전체 완료 | 총{}ms",
+                    System.currentTimeMillis() - start
+            );
 
         } catch (Exception e) {
             analysis.failAnalysis(e.getMessage());
             policyAnalysisRepository.save(analysis);
-            log.error("[ANALYSIS] 증권 분석 실패 | {}", e.getMessage(), e);
+            log.error(
+                    "[ANALYSIS] 증권 분석 실패 | {}",
+                    e.getMessage(),
+                    e
+            );
         }
     }
 

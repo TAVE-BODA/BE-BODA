@@ -15,15 +15,9 @@ public class DashboardController {
     private final DashboardService dashboardService;
     private final DashcardService dashcardService;
 
-//  대시보드 생성
-    @PostMapping
-    public DashboardResponse createDashboard(
-            @RequestBody DashboardResponse request
-    ) {
-        return dashboardService.createDashboard(request);
-    }
+//  대시보드 자동 생성 (증권 분석 완료시)
 
-    // 먼저 대시보드 조회
+    // 사용자가 대시보드 확인 버튼을 누르면 저장된 대시보드 조회
     @GetMapping("/summary/{chatSessionId}")
     public DashboardResponse getDashboard(
             @PathVariable Long chatSessionId
@@ -31,7 +25,9 @@ public class DashboardController {
         return dashboardService.getDashboard(chatSessionId);
     }
 
-    // 대시보드에 들어있는 증권분석id로 각 증권별 카드 조회
+
+
+    // 대시보드의 analysisId를 이용해 각 증권별 카드 조회
     @GetMapping("/analysis/{analysisId}")
     public DashcardResponse getDashcard(
             @PathVariable Long analysisId
