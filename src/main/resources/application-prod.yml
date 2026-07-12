@@ -11,6 +11,7 @@ spring:
     show-sql: true
 
 server:
+  forward-headers-strategy: framework
   port: 8080
   servlet:
     session:

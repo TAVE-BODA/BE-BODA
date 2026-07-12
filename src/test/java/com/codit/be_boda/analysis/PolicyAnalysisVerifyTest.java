@@ -28,7 +28,7 @@ class PolicyAnalysisVerifyTest {
     private ObjectMapper objectMapper;
 
     //테스트 analysis_id 설정
-    private static final Long TEST_ANALYSIS_ID = 2L;
+    private static final Long TEST_ANALYSIS_ID = 20L;
 
     @Test
     @DisplayName("증권 분석 결과 전체 출력")

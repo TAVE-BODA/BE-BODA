@@ -2,6 +2,7 @@ package com.codit.be_boda.analysis.service;
 
 import com.codit.be_boda.analysis.domain.*;
 import com.codit.be_boda.analysis.repository.*;
+import com.codit.be_boda.chat.repository.ChatSessionRepository;
 import com.codit.be_boda.rag.RagService;
 import com.codit.be_boda.upload.service.S3Service;
 import com.codit.be_boda.user.domain.User;
@@ -32,6 +33,7 @@ public class TermsAnalysisService {
     private final TermsRiderRepository termsRiderRepository;
     private final TermsClauseRepository termsClauseRepository;
     private final TermsChunkRepository termsChunkRepository;
+    private final ChatSessionRepository chatSessionRepository;
     private final S3Service s3Service;
     private final RagService ragService;
 
@@ -46,7 +48,8 @@ public class TermsAnalysisService {
 
     @Transactional
     public TermsDocument createAndStartParsing(User user, String originalFileName,
-                                               String s3Key, String maskedText) {
+                                               String s3Key, String maskedText,
+                                               Long chatSessionId) {
         TermsDocument doc = TermsDocument.builder()
                 .user(user)
                 .originalFileName(originalFileName)
@@ -56,13 +59,13 @@ public class TermsAnalysisService {
         termsDocumentRepository.save(doc);
         log.info("[TERMS] 약관 레코드 생성 | termsId={}", doc.getId());
 
-        parseAsync(doc, maskedText);
+        parseAsync(doc, maskedText, chatSessionId);
         return doc;
     }
 
     @Async
     @Transactional
-    public void parseAsync(TermsDocument doc, String maskedText) {
+    public void parseAsync(TermsDocument doc, String maskedText, Long chatSessionId) {
         long start = System.currentTimeMillis();
         log.info("[TERMS] 약관 비동기 파싱 시작 | termsId={}", doc.getId());
         doc.startParsing();
@@ -91,7 +94,17 @@ public class TermsAnalysisService {
             ragService.indexTerms(doc.getId(), maskedText);
             log.info("[TERMS] RAG 인덱싱 완료 | {}ms", System.currentTimeMillis() - start);
 
-            // 4.  S3 원본 파기
+            // 채팅방 연결 (코드3 플로우: 업로드 시 chatSessionId 포함 시 chat_session.terms_document_id 업데이트)
+            if (chatSessionId != null) {
+                chatSessionRepository.findById(chatSessionId).ifPresent(chatSession -> {
+                    chatSession.updateTermsDocument(doc.getId());
+                    chatSessionRepository.save(chatSession);
+                    log.info("[TERMS] 채팅방 약관 연결 완료 | chatSessionId={} termsId={}",
+                            chatSessionId, doc.getId());
+                });
+            }
+
+            // S3 원본 파기
             s3Service.deleteFile(doc.getS3Key());
             doc.completeParsing(null, null, maskedText);
             termsDocumentRepository.save(doc);

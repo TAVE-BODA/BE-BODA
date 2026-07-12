@@ -43,10 +43,9 @@ dependencies {
     // PDFBox 3.x
     implementation 'org.apache.pdfbox:pdfbox:3.0.2'
 
-    // AWS SDK (S3 + Textract)
+    // AWS SDK (S3만 사용 — OCR은 네이버 클로바로 전환)
     implementation platform('software.amazon.awssdk:bom:2.25.0')
     implementation 'software.amazon.awssdk:s3'
-    implementation 'software.amazon.awssdk:textract'
 
     // JSONB 매핑 (hypersistence)
     implementation 'io.hypersistence:hypersistence-utils-hibernate-63:3.7.3'
