@@ -22,6 +22,7 @@ import com.codit.be_boda.chat.type.QuestionType;
 import com.codit.be_boda.chat.type.SenderType;
 import com.codit.be_boda.chat.type.TreatmentStartDateType;
 import com.codit.be_boda.chat.type.TreatmentType;
+import com.codit.be_boda.chat.type.DentalTreatmentCountType;
 import com.codit.be_boda.chat.validator.ChatMessageRequestValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -295,7 +296,19 @@ public class ChatService {
         if (request.getDentalInfo() != null
                 && request.getDentalInfo().getDentalTreatmentTypes() != null
                 && !request.getDentalInfo().getDentalTreatmentTypes().isEmpty()) {
-            sb.append("- 치아 치료: ").append(request.getDentalInfo().getDentalTreatmentTypes()).append("\n");
+
+            sb.append("- 치아 치료: ")
+                    .append(request.getDentalInfo().getDentalTreatmentTypes())
+                    .append("\n");
+
+            if (request.getDentalInfo().getDentalTreatmentCountType()
+                    == DentalTreatmentCountType.EXACT_COUNT
+                    && request.getDentalInfo().getDentalTreatmentCount() != null) {
+
+                sb.append("- 치료 치아 개수: ")
+                        .append(request.getDentalInfo().getDentalTreatmentCount())
+                        .append("개\n");
+            }
         }
 
         if (request.getTreatmentStartDateType() != null) {
@@ -348,9 +361,20 @@ public class ChatService {
         if (request.getDentalInfo() != null
                 && request.getDentalInfo().getDentalTreatmentTypes() != null
                 && !request.getDentalInfo().getDentalTreatmentTypes().isEmpty()) {
-            builder.append("- 치아 치료: ").append(request.getDentalInfo().getDentalTreatmentTypes()).append("\n");
-        }
 
+            builder.append("- 치아 치료: ")
+                    .append(request.getDentalInfo().getDentalTreatmentTypes())
+                    .append("\n");
+
+            if (request.getDentalInfo().getDentalTreatmentCountType()
+                    == DentalTreatmentCountType.EXACT_COUNT
+                    && request.getDentalInfo().getDentalTreatmentCount() != null) {
+
+                builder.append("- 치료 치아 개수: ")
+                        .append(request.getDentalInfo().getDentalTreatmentCount())
+                        .append("개\n");
+            }
+        }
         appendTreatmentStartDate(builder, request);
 
         return builder.toString().trim();

@@ -143,6 +143,35 @@ public class ChatAnswerService {
             );
         }
 
+        if (hasTreatmentType(request, TreatmentType.DENTAL)) {
+            return dentalAnswerGenerator.generateStructuredClaimAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+        if (hasTreatmentType(request, TreatmentType.DIAGNOSIS_ONLY)) {
+            return diagnosisAnswerGenerator.generateStructuredClaimAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+        if (hasTreatmentType(request, TreatmentType.OUTPATIENT)) {
+            return outpatientAnswerGenerator.generateStructuredClaimAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+        if (hasTreatmentType(request, TreatmentType.DISABILITY)) {
+            return disabilityAnswerGenerator.generateStructuredClaimAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+
         String messageContent = generateClaimAnswer(analysisId, request);
         ClaimGuideResponse claimGuide = buildClaimGuide(request);
 
