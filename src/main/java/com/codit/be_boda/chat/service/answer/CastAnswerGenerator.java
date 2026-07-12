@@ -4,6 +4,7 @@ import com.codit.be_boda.analysis.dto.CoverageAmountDto;
 import com.codit.be_boda.analysis.dto.CoverageItemDto;
 import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
+import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.ArrayList;
 
 @Slf4j
 @Component
@@ -34,7 +36,7 @@ public class CastAnswerGenerator {
             CoverageLlmResponse detail = parseCoverageDetail(coverageItem.detail());
 
             if (detail.items() == null || detail.items().isEmpty()) {
-                break;
+                continue;
             }
 
             return detail.items().stream()
@@ -50,6 +52,61 @@ public class CastAnswerGenerator {
         }
 
         return "가입하신 증권에서 골절·깁스 관련 보장 항목을 찾지 못했어요.";
+    }
+
+    // CHIP_CLAIM 중 CAST 문자열 응답과 DTO 카드 데이터 생성
+    public ClaimAnswerResult generateStructuredClaimAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        CastCoverageMatch match = findMatchedCastCoverage(analysisId);
+        String messageContent = generateClaimAnswer(analysisId, request);
+
+        if (match == null) {
+            ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                    .claimStatus("NOT_AVAILABLE")
+                    .summary("깁스 치료와 직접 매칭되는 보장 항목을 찾지 못했어요.")
+                    .reasons(List.of(
+                            "가입하신 증권에서 골절·깁스 관련 보장 항목이 확인되지 않았어요."
+                    ))
+                    .cautions(List.of(
+                            "다른 특약이나 약관에 관련 보장이 있는지 추가 확인이 필요할 수 있어요."
+                    ))
+                    .build();
+
+            return new ClaimAnswerResult(messageContent, claimGuide);
+        }
+
+        CoverageItemDto item = match.item();
+        boolean splint = isSplintCast(request);
+
+        List<String> reasons = new ArrayList<>();
+        reasons.add("가입하신 증권에서 " + item.coverageName() + " 보장이 확인돼요.");
+
+        if (splint) {
+            reasons.add("입력하신 치료 방식은 반깁스 또는 부목이에요.");
+            reasons.add("해당 깁스 치료 보장은 부목을 제외하는 조건이 있어요.");
+        } else {
+            reasons.add("입력하신 치료 방식은 정식 깁스예요.");
+
+            String amountReason = buildCastAmountReason(item);
+            if (amountReason != null) {
+                reasons.add(amountReason);
+            }
+        }
+
+        ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                .claimStatus(splint ? "NEEDS_REVIEW" : "POSSIBLE")
+                .summary(
+                        splint
+                                ? "부목 치료는 청구 대상에서 제외될 수 있어요."
+                                : "정식 깁스 치료는 청구 가능성이 있어요."
+                )
+                .reasons(reasons)
+                .cautions(buildCastCautions(match.exclusionKeywords()))
+                .build();
+
+        return new ClaimAnswerResult(messageContent, claimGuide);
     }
 
     // CHIP_AMOUNT 중 CAST 처리
@@ -179,13 +236,111 @@ public class CastAnswerGenerator {
     }
 
     // 주의사항 문구 추가
-    private void appendExclusionKeywords(StringBuilder answer, String exclusionKeywords) {
-        if (exclusionKeywords != null && !exclusionKeywords.isBlank()) {
-            answer.append("\n[주의사항]\n")
-                    .append("- ")
-                    .append(exclusionKeywords.replace(", ", "\n- "))
+    private void appendExclusionKeywords(
+            StringBuilder answer,
+            String exclusionKeywords
+    ) {
+        if (exclusionKeywords == null || exclusionKeywords.isBlank()) {
+            return;
+        }
+
+        List<String> castCautions = new ArrayList<>();
+
+        for (String keyword : exclusionKeywords.split(",")) {
+            String caution = keyword.trim();
+
+            if (caution.contains("부목") || caution.contains("깁스")) {
+                castCautions.add(caution);
+            }
+        }
+
+        if (castCautions.isEmpty()) {
+            return;
+        }
+
+        answer.append("\n[주의사항]\n");
+
+        for (String caution : castCautions) {
+            answer.append("- ")
+                    .append(caution)
                     .append("\n");
         }
+    }
+    // 증권에서 깁스 보장 항목 조회
+    private CastCoverageMatch findMatchedCastCoverage(Long analysisId) {
+        if (analysisId == null) {
+            return null;
+        }
+
+        List<CoverageItemInfo> coverageItems =
+                coverageItemQueryRepository.findByAnalysisId(analysisId);
+
+        for (CoverageItemInfo coverageItem : coverageItems) {
+            if (!"골절재해".equals(coverageItem.coverageType())) {
+                continue;
+            }
+
+            CoverageLlmResponse detail = parseCoverageDetail(coverageItem.detail());
+
+            if (detail.items() == null || detail.items().isEmpty()) {
+                continue;
+            }
+
+            CoverageItemDto castItem = detail.items().stream()
+                    .filter(item -> item.coverageName() != null)
+                    .filter(item -> item.coverageName().contains("깁스"))
+                    .findFirst()
+                    .orElse(null);
+
+            if (castItem != null) {
+                return new CastCoverageMatch(
+                        castItem,
+                        coverageItem.exclusionKeywords()
+                );
+            }
+        }
+
+        return null;
+    }
+
+    private String buildCastAmountReason(CoverageItemDto item) {
+        if (item.amounts() == null || item.amounts().isEmpty()) {
+            return null;
+        }
+
+        CoverageAmountDto amount = item.amounts().get(0);
+
+        if (amount.coverageAmount() == null) {
+            return null;
+        }
+
+        return "깁스 치료 시 "
+                + String.format("%,d원", amount.coverageAmount())
+                + "의 보장금액이 확인됐어요.";
+    }
+
+    private List<String> buildCastCautions(String exclusionKeywords) {
+        List<String> cautions = new ArrayList<>();
+
+        if (exclusionKeywords != null && !exclusionKeywords.isBlank()) {
+            for (String keyword : exclusionKeywords.split(",")) {
+                String caution = keyword.trim();
+
+                if (caution.contains("부목") || caution.contains("깁스")) {
+                    cautions.add(caution);
+                }
+            }
+        }
+
+        cautions.add("실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요.");
+
+        return cautions;
+    }
+
+    private record CastCoverageMatch(
+            CoverageItemDto item,
+            String exclusionKeywords
+    ) {
     }
 
     // detail JSON 파싱
@@ -202,3 +357,5 @@ public class CastAnswerGenerator {
         }
     }
 }
+
+

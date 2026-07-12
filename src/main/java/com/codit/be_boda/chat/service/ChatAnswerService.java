@@ -124,12 +124,21 @@ public class ChatAnswerService {
     }
 
     // 치료 유형별 청구 가능 여부 구조화 응답 생성
-    private ClaimAnswerResult generateClaimAnswerResult(Long analysisId, ChatMessageRequest request) {
+    private ClaimAnswerResult generateClaimAnswerResult(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        if (hasTreatmentType(request, TreatmentType.CAST)) {
+            return castAnswerGenerator.generateStructuredClaimAnswer(analysisId, request);
+        }
+
         if (hasTreatmentType(request, TreatmentType.SURGERY)) {
             return surgeryAnswerGenerator.generateStructuredClaimAnswer(analysisId, request);
         }
+
         String messageContent = generateClaimAnswer(analysisId, request);
         ClaimGuideResponse claimGuide = buildClaimGuide(request);
+
         return new ClaimAnswerResult(messageContent, claimGuide);
     }
 
