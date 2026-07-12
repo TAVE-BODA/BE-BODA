@@ -1,6 +1,6 @@
 package com.codit.be_boda.dashboard.domain;
 
-import com.codit.be_boda.chat.entity.ChatSession;
+
 import com.codit.be_boda.dashboard.dto.CoverageSummaryDto;
 import com.codit.be_boda.user.domain.User;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
