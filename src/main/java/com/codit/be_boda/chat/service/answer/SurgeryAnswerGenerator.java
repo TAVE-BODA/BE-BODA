@@ -6,6 +6,8 @@ import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
+import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
+import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +62,40 @@ public class SurgeryAnswerGenerator {
         }
 
         return answer.toString();
+    }// CHIP_CLAIM 중 SURGERY 문자열 응답과 DTO 카드 데이터 생성
+    public ClaimAnswerResult generateStructuredClaimAnswer(Long analysisId, ChatMessageRequest request) {
+        String messageContent = generateClaimAnswer(analysisId, request);
+
+        CoverageItemDto surgeryItem = findMatchedSurgeryItem(analysisId, request);
+
+        if (surgeryItem == null) {
+            ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                    .claimStatus("NOT_AVAILABLE")
+                    .summary("직접 매칭되는 수술비 보장 항목을 찾지 못했어요.")
+                    .reasons(List.of(
+                            "가입하신 증권에서 입력하신 상황과 직접 매칭되는 수술비 보장 항목이 확인되지 않았어요."
+                    ))
+                    .cautions(List.of(
+                            "다른 특약이나 약관 조건에 따라 추가 확인이 필요할 수 있어요."
+                    ))
+                    .build();
+
+            return new ClaimAnswerResult(messageContent, claimGuide);
+        }
+
+        ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                .claimStatus("POSSIBLE")
+                .summary("청구 가능성이 있어요.")
+                .reasons(List.of(
+                        "가입하신 증권에서 " + surgeryItem.coverageName() + " 보장이 확인돼요.",
+                        getIncidentDescription(request) + "로 인정되면 보험금을 받을 수 있어요."
+                ))
+                .cautions(List.of(
+                        "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+                ))
+                .build();
+
+        return new ClaimAnswerResult(messageContent, claimGuide);
     }
 
     // CHIP_AMOUNT 중 SURGERY 처리
@@ -121,6 +157,63 @@ public class SurgeryAnswerGenerator {
                 .append("\n");
 
         return answer.toString();
+    }
+
+    // CHIP_AMOUNT 중 SURGERY 문자열 응답과 DTO 카드 데이터 생성
+    public AmountAnswerResult generateStructuredAmountAnswer(Long analysisId, ChatMessageRequest request) {
+        String messageContent = generateAmountAnswer(analysisId, request);
+
+        CoverageItemDto surgeryItem = findMatchedSurgeryItem(analysisId, request);
+
+        if (surgeryItem == null || surgeryItem.amounts() == null || surgeryItem.amounts().isEmpty()) {
+            AmountGuideResponse amountGuide = AmountGuideResponse.builder()
+                    .calculationAvailable(false)
+                    .estimatedItems(List.of())
+                    .cautions(List.of(
+                            "가입하신 증권에서 입력하신 상황과 직접 매칭되는 수술비 보장 항목을 찾지 못했어요."
+                    ))
+                    .build();
+
+            return new AmountAnswerResult(messageContent, amountGuide);
+        }
+
+        AmountGuideResponse amountGuide = AmountGuideResponse.builder()
+                .calculationAvailable(true)
+                .estimatedItems(
+                        surgeryItem.amounts().stream()
+                                .map(amount -> AmountGuideResponse.EstimatedItem.builder()
+                                        .coverageName(surgeryItem.coverageName())
+                                        .amountText(formatAmountText(amount))
+                                        .reason(buildAmountReason(amount, request))
+                                        .build())
+                                .toList()
+                )
+                .cautions(List.of(
+                        "정확한 금액은 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+                ))
+                .build();
+
+        return new AmountAnswerResult(messageContent, amountGuide);
+    }
+
+    // 예상 보험금 금액 문구 생성
+    private String formatAmountText(CoverageAmountDto amount) {
+        if (amount == null || amount.coverageAmount() == null) {
+            return "약관 확인 필요";
+        }
+
+        return String.format("%,d원", amount.coverageAmount());
+    }
+
+    // 예상 보험금 산정 이유 문구 생성
+    private String buildAmountReason(CoverageAmountDto amount, ChatMessageRequest request) {
+        if (amount == null || amount.condition() == null || amount.condition().isBlank()
+                || "조건없음".equals(amount.condition())) {
+            return getIncidentDescription(request)
+                    + "로 인정되고, 수술명이 약관상 지급 조건에 해당하면 지급 후보가 될 수 있어요.";
+        }
+
+        return amount.condition() + " 조건 기준으로 확인된 금액이에요.";
     }
 
     // 입력된 사고 유형과 자유입력에 맞는 수술비 항목 찾기

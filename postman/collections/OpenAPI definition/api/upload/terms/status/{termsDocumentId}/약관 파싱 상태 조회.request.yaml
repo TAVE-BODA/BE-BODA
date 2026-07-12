@@ -1,0 +1,9 @@
+$kind: http-request
+url: "{{baseUrl}}/api/upload/terms/status/:termsDocumentId"
+method: GET
+headers:
+  Accept: "*/*"
+pathVariables:
+  termsDocumentId: "8002"
+examples: ./.resources/약관 파싱 상태 조회.resources/examples
+order: 1000

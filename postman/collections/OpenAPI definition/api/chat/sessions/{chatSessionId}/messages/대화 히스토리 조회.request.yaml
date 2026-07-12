@@ -1,0 +1,10 @@
+$kind: http-request
+description: 특정 채팅방의 USER/AI 메시지를 생성 시간순으로 조회합니다.
+url: "{{baseUrl}}/api/chat/sessions/:chatSessionId/messages"
+method: GET
+headers:
+  Accept: "*/*"
+pathVariables:
+  chatSessionId: "8002"
+examples: ./.resources/대화 히스토리 조회.resources/examples
+order: 1000

@@ -1,0 +1,188 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/chat/sessions/:chatSessionId/messages"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Accept: "*/*"
+  pathVariables:
+    chatSessionId: "8002"
+  body:
+    type: json
+    content: |-
+      {
+        "questionType": "FREE_TEXT",
+        "message": "string",
+        "incidentType": "CHECKUP_FOUND",
+        "treatmentTypes": [
+          "DENTAL",
+          "DIAGNOSIS_ONLY"
+        ],
+        "hospitalizationInfo": {
+          "hospitalType": "GENERAL_HOSPITAL",
+          "roomType": "TWO_THREE_ROOM",
+          "hospitalizedNights": 7253
+        },
+        "castInfo": {
+          "castInjuryPartType": "TRUNK",
+          "castType": "FULL_CAST"
+        },
+        "dentalInfo": {
+          "dentalTreatmentTypes": [
+            "ROOT_CANAL",
+            "ROOT_CANAL"
+          ],
+          "dentalTreatmentCountType": "UNKNOWN",
+          "dentalTreatmentCount": 6637
+        },
+        "treatmentStartDateType": "YEAR_MONTH",
+        "treatmentStartDate": "2018-10-31",
+        "treatmentStartYear": 7282,
+        "treatmentStartMonth": 7097
+      }
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: "*/*"
+  body:
+    type: text
+    content: |-
+      {
+        "chatSessionId": 6758,
+        "userMessage": {
+          "messageId": 5143,
+          "senderType": "USER",
+          "questionType": "CHIP_AMOUNT",
+          "messageContent": "string",
+          "usedFallback": false,
+          "disclaimerText": "string",
+          "hasSources": false,
+          "createdAt": "1969-02-17T04:07:31.921Z",
+          "documentGuide": {
+            "documents": [
+              {
+                "name": "string",
+                "description": "string",
+                "required": false
+              },
+              {
+                "name": "string",
+                "description": "string",
+                "required": false
+              }
+            ],
+            "evidences": [
+              {
+                "chunkId": 5282,
+                "title": "string"
+              },
+              {
+                "chunkId": 9540,
+                "title": "string"
+              }
+            ],
+            "evidenceAvailable": false,
+            "notice": "string"
+          },
+          "claimGuide": {
+            "claimStatus": "string",
+            "summary": "string",
+            "reasons": [
+              "string",
+              "string"
+            ],
+            "cautions": [
+              "string",
+              "string"
+            ]
+          },
+          "amountGuide": {
+            "calculationAvailable": false,
+            "estimatedItems": [
+              {
+                "coverageName": "string",
+                "amountText": "string",
+                "reason": "string"
+              },
+              {
+                "coverageName": "string",
+                "amountText": "string",
+                "reason": "string"
+              }
+            ],
+            "cautions": [
+              "string",
+              "string"
+            ]
+          }
+        },
+        "aiMessage": {
+          "messageId": 7020,
+          "senderType": "AI",
+          "questionType": "CHIP_OVERVIEW",
+          "messageContent": "string",
+          "usedFallback": false,
+          "disclaimerText": "string",
+          "hasSources": true,
+          "createdAt": "1957-01-27T08:58:31.889Z",
+          "documentGuide": {
+            "documents": [
+              {
+                "name": "string",
+                "description": "string",
+                "required": false
+              },
+              {
+                "name": "string",
+                "description": "string",
+                "required": true
+              }
+            ],
+            "evidences": [
+              {
+                "chunkId": 7903,
+                "title": "string"
+              },
+              {
+                "chunkId": 9494,
+                "title": "string"
+              }
+            ],
+            "evidenceAvailable": true,
+            "notice": "string"
+          },
+          "claimGuide": {
+            "claimStatus": "string",
+            "summary": "string",
+            "reasons": [
+              "string",
+              "string"
+            ],
+            "cautions": [
+              "string",
+              "string"
+            ]
+          },
+          "amountGuide": {
+            "calculationAvailable": false,
+            "estimatedItems": [
+              {
+                "coverageName": "string",
+                "amountText": "string",
+                "reason": "string"
+              },
+              {
+                "coverageName": "string",
+                "amountText": "string",
+                "reason": "string"
+              }
+            ],
+            "cautions": [
+              "string",
+              "string"
+            ]
+          }
+        }
+      }
+order: 1000

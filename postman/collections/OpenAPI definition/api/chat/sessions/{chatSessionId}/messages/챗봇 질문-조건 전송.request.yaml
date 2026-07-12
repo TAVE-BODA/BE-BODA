@@ -1,0 +1,45 @@
+$kind: http-request
+name: 챗봇 질문/조건 전송
+description: 사용자 질문과 보험 상담 조건을 저장하고, USER 메시지와 AI 응답 메시지를 한 쌍으로 반환합니다.
+url: "{{baseUrl}}/api/chat/sessions/:chatSessionId/messages"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: "*/*"
+pathVariables:
+  chatSessionId: "8002"
+body:
+  type: json
+  content: |-
+    {
+      "questionType": "FREE_TEXT",
+      "message": "string",
+      "incidentType": "CHECKUP_FOUND",
+      "treatmentTypes": [
+        "DENTAL",
+        "DIAGNOSIS_ONLY"
+      ],
+      "hospitalizationInfo": {
+        "hospitalType": "GENERAL_HOSPITAL",
+        "roomType": "TWO_THREE_ROOM",
+        "hospitalizedNights": 7253
+      },
+      "castInfo": {
+        "castInjuryPartType": "TRUNK",
+        "castType": "FULL_CAST"
+      },
+      "dentalInfo": {
+        "dentalTreatmentTypes": [
+          "ROOT_CANAL",
+          "ROOT_CANAL"
+        ],
+        "dentalTreatmentCountType": "UNKNOWN",
+        "dentalTreatmentCount": 6637
+      },
+      "treatmentStartDateType": "YEAR_MONTH",
+      "treatmentStartDate": "2018-10-31",
+      "treatmentStartYear": 7282,
+      "treatmentStartMonth": 7097
+    }
+examples: ./.resources/챗봇 질문-조건 전송.resources/examples
+order: 2000

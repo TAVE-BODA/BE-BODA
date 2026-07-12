@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{baseUrl}}/kakao/login/init"
+method: GET
+headers:
+  Accept: "*/*"
+examples: ./.resources/init Login.resources/examples
+order: 1000

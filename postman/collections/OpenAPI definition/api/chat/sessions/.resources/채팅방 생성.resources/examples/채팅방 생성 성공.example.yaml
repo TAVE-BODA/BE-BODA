@@ -1,0 +1,37 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/chat/sessions"
+  method: POST
+  headers:
+    Content-Type: application/json
+    Accept: "*/*"
+  body:
+    type: json
+    content: |-
+      {
+        "analysisIds": [
+          9675,
+          7224
+        ],
+        "termsDocumentId": 866
+      }
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: "*/*"
+  body:
+    type: text
+    content: |-
+      {
+        "chatSessionId": 6188,
+        "userId": 461,
+        "analysisIds": [
+          2010,
+          7038
+        ],
+        "termsDocumentId": 5660,
+        "sessionTitle": "string",
+        "createdAt": "2008-04-01T05:16:27.878Z"
+      }
+order: 1000

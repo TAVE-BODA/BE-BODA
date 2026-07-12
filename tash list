@@ -1,0 +1,14 @@
+*   [33mfe3ab07[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mapi/chat[m[33m)[m Merge branch 'main' of https://github.com/TAVE-BODA/BE-BODA into api/chat
+[31m|[m[32m\[m  
+[31m|[m *   [33m3b62dc5[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m Merge pull request #19 from TAVE-BODA/api/upload
+[31m|[m [33m|[m[34m\[m  
+[31m|[m [33m|[m * [33me56f6ad[m fix/프론트 redirect 서버 수정
+* [33m|[m [34m|[m [33m123daab[m[33m ([m[1;31morigin/api/chat[m[33m)[m Revert "chore/main 브랜치 변경사항 병합"
+* [33m|[m [34m|[m [33maf8125c[m chore/main 브랜치 변경사항 병합
+[35m|[m[33m\[m[33m|[m [34m|[m 
+[35m|[m * [34m|[m [33m45398a6[m Merge pull request #18 from TAVE-BODA/api/upload
+[35m|[m [1;31m|[m[34m\[m[34m|[m 
+[35m|[m [1;31m|[m * [33meb113df[m fix/upload시 chat session과 증권/약관 연결
+[35m|[m [1;31m|[m * [33m4895d01[m feat/삭제 기능
+[35m|[m [1;31m|[m * [33mafae7e4[m fix/증권과 채팅방 세션 분리. 증권 없어도 채팅방 생성 가능하게.
+[35m|[m [1;31m|[m * [33m4ae577f[m feat/중간 테이블 생성
