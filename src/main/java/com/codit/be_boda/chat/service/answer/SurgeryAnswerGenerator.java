@@ -38,8 +38,8 @@ public class SurgeryAnswerGenerator {
                 .append("가입하신 증권에서 ")
                 .append(surgeryItem.coverageName())
                 .append(" 보장이 확인돼요.\n")
-                .append(getIncidentDescription(request))
-                .append("로 인정되면 보험금을 받을 수 있어요.\n\n")
+                .append(getIncidentRecognitionDescription(request))
+                .append(" 인정되면 보험금을 받을 수 있어요.\n\n")
                 .append("[확인된 보장]\n")
                 .append("- ")
                 .append(surgeryItem.coverageName())
@@ -88,7 +88,8 @@ public class SurgeryAnswerGenerator {
                 .summary("청구 가능성이 있어요.")
                 .reasons(List.of(
                         "가입하신 증권에서 " + surgeryItem.coverageName() + " 보장이 확인돼요.",
-                        getIncidentDescription(request) + "로 인정되면 보험금을 받을 수 있어요."
+                        getIncidentRecognitionDescription(request)
+                                + " 인정되면 보험금을 받을 수 있어요."
                 ))
                 .cautions(List.of(
                         "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
@@ -144,8 +145,8 @@ public class SurgeryAnswerGenerator {
                 .append(" 보장금액이 ")
                 .append(String.format("%,d원", amount.coverageAmount()))
                 .append("이에요.\n")
-                .append(getIncidentDescription(request))
-                .append("로 인정되고, 수술확인서의 수술명이 약관상 지급 조건에 해당하면 이 금액이 지급 후보가 될 수 있어요.\n\n");
+                .append(getIncidentRecognitionDescription(request))
+                .append(" 인정되고, 수술확인서의 수술명이 약관상 지급 조건에 해당하면 이 금액이 지급 후보가 될 수 있어요.\n\n");
 
         answer.append("[계산 내역]\n")
                 .append("- ")
@@ -209,8 +210,8 @@ public class SurgeryAnswerGenerator {
     private String buildAmountReason(CoverageAmountDto amount, ChatMessageRequest request) {
         if (amount == null || amount.condition() == null || amount.condition().isBlank()
                 || "조건없음".equals(amount.condition())) {
-            return getIncidentDescription(request)
-                    + "로 인정되고, 수술명이 약관상 지급 조건에 해당하면 지급 후보가 될 수 있어요.";
+            return getIncidentRecognitionDescription(request)
+                    + " 인정되고, 수술명이 약관상 지급 조건에 해당하면 지급 후보가 될 수 있어요.";
         }
 
         return amount.condition() + " 조건 기준으로 확인된 금액이에요.";
@@ -292,19 +293,17 @@ public class SurgeryAnswerGenerator {
     }
 
     // 사고 유형 문구 변환
-    private String getIncidentDescription(ChatMessageRequest request) {
-        if (request.getIncidentType() != null
-                && "INJURY".equals(request.getIncidentType().name())) {
-            return "재해 또는 상해";
+    private String getIncidentRecognitionDescription(
+            ChatMessageRequest request
+    ) {
+        if (request.getIncidentType() == null) {
+            return "입력하신 상황이 보장 조건으로";
         }
 
-        if (request.getIncidentType() != null
-                && ("DISEASE".equals(request.getIncidentType().name())
-                || "CHECKUP_FOUND".equals(request.getIncidentType().name()))) {
-            return "질병";
-        }
-
-        return "입력하신 상황";
+        return switch (request.getIncidentType()) {
+            case INJURY -> "재해 또는 상해로";
+            case DISEASE, CHECKUP_FOUND -> "질병으로";
+        };
     }
 
     // 첫 번째 보장 금액 정보 조회
