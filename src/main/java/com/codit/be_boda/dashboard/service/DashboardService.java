@@ -21,8 +21,11 @@ import com.codit.be_boda.analysis.dto.CoverageItemDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.Objects;
 import java.time.LocalDate;
@@ -40,6 +43,12 @@ public class DashboardService {
     private final PolicyAnalysisRepository policyAnalysisRepository;
     private final CoverageItemRepository coverageItemRepository;
     private final ObjectMapper objectMapper;
+
+//  조건에 따라 조회할 금액리스트가 달라짐
+    private static final Pattern YEAR_CONDITION_PATTERN =
+            Pattern.compile(
+                    "(\\d+)\\s*년\\s*(이내|초과|미만|이상)"
+            );
 
     // 저장된 대시보드 조회
     public DashboardResponse getDashboard(Long chatSessionId) {
@@ -173,30 +182,169 @@ public class DashboardService {
         return response.items();
     }
 
+    // 해당 보장 카드가 생성된 날짜를 분석 기준일로 사용
+    private LocalDate extractAnalysisDate(
+            CoverageItem coverageItem
+    ) {
+        if (coverageItem.getCreatedAt() == null) {
+            throw new IllegalArgumentException(
+                    "보장 항목 생성일을 찾을 수 없습니다. coverageId="
+                            + coverageItem.getId()
+            );
+        }
 
-//    각 카드별 금액 모두 추출(최대,최소를 계산하기 위해)
+        return coverageItem.getCreatedAt()
+                .toLocalDate();
+    }
+
+    // policy_analysis 테이블의 extracted_data에서 보험 가입일 추출
+    private LocalDate extractInsuranceStartDate(
+            PolicyAnalysis policyAnalysis
+    ) {
+        Map<String, Object> extractedData =
+                policyAnalysis.getExtractedData();
+
+        if (extractedData == null) {
+            throw new IllegalArgumentException(
+                    "증권 기본 정보가 없습니다. analysisId="
+                            + policyAnalysis.getId()
+            );
+        }
+
+        Object startDateValue =
+                extractedData.get("insuranceStartDate");
+
+        if (startDateValue == null) {
+            throw new IllegalArgumentException(
+                    "보험 가입일을 찾을 수 없습니다. analysisId="
+                            + policyAnalysis.getId()
+            );
+        }
+
+//      날짜 형식 오류만 잡아내도록 수정
+        try {
+            return LocalDate.parse(
+                    String.valueOf(startDateValue)
+            );
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException(
+                    "보험 가입일 형식이 올바르지 않습니다. "
+                            + "analysisId=" + policyAnalysis.getId()
+                            + ", insuranceStartDate=" + startDateValue,
+                    e
+            );
+        }
+    }
+
+    // 가입일과 분석일을 기준으로 현재 적용 가능한 기간 조건인지 판단
+    private boolean matchesDateCondition(
+            String condition,
+            LocalDate insuranceStartDate,
+            LocalDate analysisDate
+    ) {
+        if (condition == null || condition.isBlank()) {
+            return true;
+        }
+
+        String normalizedCondition =
+                condition.replaceAll("\\s+", "");
+
+        // 기간 제한이 없는 금액은 그대로 사용
+        if ("조건없음".equals(normalizedCondition)) {
+            return true;
+        }
+
+        Matcher matcher =
+                YEAR_CONDITION_PATTERN.matcher(condition);
+
+        /*
+         * "1일당", "3일 초과 1일당", "수술 1회당" 등은
+         * 가입 후 연도 조건이 아니므로 그대로 포함
+         */
+        if (!matcher.find()) {
+            return true;
+        }
+
+        int years =
+                Integer.parseInt(matcher.group(1));
+
+        String operator =
+                matcher.group(2);
+
+        LocalDate boundaryDate =
+                insuranceStartDate.plusYears(years);
+
+        return switch (operator) {
+            // 정확히 1년이 되는 날까지 포함
+            case "이내" ->
+                    !analysisDate.isAfter(boundaryDate);
+
+            // 정확히 1년이 되는 다음 날부터 포함
+            case "초과" ->
+                    analysisDate.isAfter(boundaryDate);
+
+            case "미만" ->
+                    analysisDate.isBefore(boundaryDate);
+
+            case "이상" ->
+                    !analysisDate.isBefore(boundaryDate);
+
+            default -> true;
+        };
+    }
+
+
+// 각 카드별 금액 모두 추출(최대,최소를 계산하기 위해)
+// 가입일과 분석일을 기준으로 현재 조건에 맞는 금액만 추출
     private List<Long> extractCoverageAmounts(
-            List<CoverageItem> coverageItems
+        List<CoverageItem> coverageItems
     ) {
         return coverageItems.stream()
-                .flatMap(coverageItem ->
-                        convertDetail(coverageItem).stream()
-                )
-                .filter(Objects::nonNull)
-                .flatMap(item -> {
-                    if (item.amounts() == null) {
-                        return java.util.stream.Stream.empty();
-                    }
+            .flatMap(coverageItem -> {
 
-                    return item.amounts().stream();
-                })
-                .filter(Objects::nonNull)
-                .map(CoverageAmountDto::coverageAmount)
-                .filter(Objects::nonNull)
+                PolicyAnalysis policyAnalysis =
+                        coverageItem.getPolicyAnalysis();
 
-                .filter(amount -> amount > 0)
-                .toList();
-    }
+                if (policyAnalysis == null) {
+                    return java.util.stream.Stream.<Long>empty();
+                }
+
+                // policy_analysis.extracted_data의 insuranceStartDate
+                LocalDate insuranceStartDate =
+                        extractInsuranceStartDate(policyAnalysis);
+
+                // coverage_item.created_at
+                LocalDate analysisDate =
+                        extractAnalysisDate(coverageItem);
+
+                return convertDetail(coverageItem).stream()
+                        .filter(Objects::nonNull)
+                        .flatMap(item -> {
+                            if (item.amounts() == null) {
+                                return java.util.stream.Stream
+                                        .<CoverageAmountDto>empty();
+                            }
+
+                            return item.amounts().stream();
+                        })
+                        .filter(Objects::nonNull)
+
+                        // 현재 날짜 조건에 해당하는 금액만 남김
+                        .filter(amountDto ->
+                                matchesDateCondition(
+                                        amountDto.condition(),
+                                        insuranceStartDate,
+                                        analysisDate
+                                )
+                        )
+
+                        .map(CoverageAmountDto::coverageAmount)
+                        .filter(Objects::nonNull)
+                        .filter(amount -> amount > 0);
+            })
+            .toList();
+}
+
 //  각 타입별 최대,최소 금액 반환
     private Long findMinAmount(List<Long> amounts) {
         return amounts.stream()
