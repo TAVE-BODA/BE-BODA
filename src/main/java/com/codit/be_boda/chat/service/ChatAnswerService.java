@@ -136,6 +136,13 @@ public class ChatAnswerService {
             return surgeryAnswerGenerator.generateStructuredClaimAnswer(analysisId, request);
         }
 
+        if (hasTreatmentType(request, TreatmentType.HOSPITALIZATION)) {
+            return hospitalizationAnswerGenerator.generateStructuredClaimAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
         String messageContent = generateClaimAnswer(analysisId, request);
         ClaimGuideResponse claimGuide = buildClaimGuide(request);
 
