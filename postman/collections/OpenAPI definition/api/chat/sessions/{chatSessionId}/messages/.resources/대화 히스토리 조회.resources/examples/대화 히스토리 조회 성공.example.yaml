@@ -1,0 +1,153 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/chat/sessions/:chatSessionId/messages"
+  method: GET
+  headers:
+    Accept: "*/*"
+  pathVariables:
+    chatSessionId: "8002"
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: "*/*"
+  body:
+    type: text
+    content: |-
+      [
+        {
+          "messageId": 3997,
+          "senderType": "USER",
+          "questionType": "CHIP_OVERVIEW",
+          "messageContent": "string",
+          "usedFallback": true,
+          "disclaimerText": "string",
+          "hasSources": true,
+          "createdAt": "2014-10-25T16:46:35.691Z",
+          "documentGuide": {
+            "documents": [
+              {
+                "name": "string",
+                "description": "string",
+                "required": false
+              },
+              {
+                "name": "string",
+                "description": "string",
+                "required": true
+              }
+            ],
+            "evidences": [
+              {
+                "chunkId": 590,
+                "title": "string"
+              },
+              {
+                "chunkId": 1676,
+                "title": "string"
+              }
+            ],
+            "evidenceAvailable": false,
+            "notice": "string"
+          },
+          "claimGuide": {
+            "claimStatus": "string",
+            "summary": "string",
+            "reasons": [
+              "string",
+              "string"
+            ],
+            "cautions": [
+              "string",
+              "string"
+            ]
+          },
+          "amountGuide": {
+            "calculationAvailable": false,
+            "estimatedItems": [
+              {
+                "coverageName": "string",
+                "amountText": "string",
+                "reason": "string"
+              },
+              {
+                "coverageName": "string",
+                "amountText": "string",
+                "reason": "string"
+              }
+            ],
+            "cautions": [
+              "string",
+              "string"
+            ]
+          }
+        },
+        {
+          "messageId": 2005,
+          "senderType": "AI",
+          "questionType": "CHIP_CLAIM",
+          "messageContent": "string",
+          "usedFallback": true,
+          "disclaimerText": "string",
+          "hasSources": true,
+          "createdAt": "2022-03-18T10:32:53.659Z",
+          "documentGuide": {
+            "documents": [
+              {
+                "name": "string",
+                "description": "string",
+                "required": false
+              },
+              {
+                "name": "string",
+                "description": "string",
+                "required": true
+              }
+            ],
+            "evidences": [
+              {
+                "chunkId": 6389,
+                "title": "string"
+              },
+              {
+                "chunkId": 7836,
+                "title": "string"
+              }
+            ],
+            "evidenceAvailable": false,
+            "notice": "string"
+          },
+          "claimGuide": {
+            "claimStatus": "string",
+            "summary": "string",
+            "reasons": [
+              "string",
+              "string"
+            ],
+            "cautions": [
+              "string",
+              "string"
+            ]
+          },
+          "amountGuide": {
+            "calculationAvailable": false,
+            "estimatedItems": [
+              {
+                "coverageName": "string",
+                "amountText": "string",
+                "reason": "string"
+              },
+              {
+                "coverageName": "string",
+                "amountText": "string",
+                "reason": "string"
+              }
+            ],
+            "cautions": [
+              "string",
+              "string"
+            ]
+          }
+        }
+      ]
+order: 1000

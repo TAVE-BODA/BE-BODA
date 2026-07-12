@@ -1,0 +1,17 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/upload/status/:analysisId"
+  method: GET
+  headers:
+    Accept: "*/*"
+  pathVariables:
+    analysisId: "8002"
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: "*/*"
+  body:
+    type: text
+    content: "{}"
+order: 1000

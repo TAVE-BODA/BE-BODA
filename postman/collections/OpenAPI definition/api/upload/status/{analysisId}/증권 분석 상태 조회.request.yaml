@@ -1,0 +1,9 @@
+$kind: http-request
+url: "{{baseUrl}}/api/upload/status/:analysisId"
+method: GET
+headers:
+  Accept: "*/*"
+pathVariables:
+  analysisId: "8002"
+examples: ./.resources/증권 분석 상태 조회.resources/examples
+order: 1000

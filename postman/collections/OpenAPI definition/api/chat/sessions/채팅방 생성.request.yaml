@@ -1,0 +1,23 @@
+$kind: http-request
+description: |
+  채팅방을 생성합니다.
+
+  case2 (기존 증권/약관 재사용): analysisIds + termsDocumentId 포함
+  case3 (완전 새 채팅방): 빈 바디 또는 {} 전송
+url: "{{baseUrl}}/api/chat/sessions"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: "*/*"
+body:
+  type: json
+  content: |-
+    {
+      "analysisIds": [
+        9675,
+        7224
+      ],
+      "termsDocumentId": 866
+    }
+examples: ./.resources/채팅방 생성.resources/examples
+order: 2000

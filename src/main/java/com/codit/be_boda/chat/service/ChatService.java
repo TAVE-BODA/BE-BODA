@@ -7,11 +7,14 @@ import com.codit.be_boda.chat.dto.request.ChatSessionCreateRequest;
 import com.codit.be_boda.chat.dto.response.ChatMessagePairResponse;
 import com.codit.be_boda.chat.dto.response.ChatMessageResponse;
 import com.codit.be_boda.chat.dto.response.ChatSessionResponse;
+import com.codit.be_boda.chat.dto.response.ChatMessageSourceResponse;
 import com.codit.be_boda.chat.entity.ChatMessage;
+import com.codit.be_boda.chat.entity.ChatMessageSource;
 import com.codit.be_boda.chat.entity.ChatSession;
 import com.codit.be_boda.chat.entity.ChatSessionPolicy;
-import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
 import com.codit.be_boda.chat.repository.ChatMessageRepository;
+import com.codit.be_boda.chat.repository.ChatMessageSourceRepository;
+import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
 import com.codit.be_boda.chat.repository.ChatSessionRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.PolicyAnalysisQueryRepository;
@@ -43,10 +46,10 @@ public class ChatService {
     private final CoverageItemQueryRepository coverageItemQueryRepository;
     private final ChatMessageRequestValidator chatMessageRequestValidator;
     private final ChatAnswerService chatAnswerService;
+    private final ChatMessageSourceRepository chatMessageSourceRepository;
 
-
-    //case2 완전 새 채팅방
-    //case3 기존 증권 재사용, 완전 새 채팅방
+    // case2: analysisIds 포함 → 생성과 동시에 중간 테이블 연결
+    // case3: 빈 바디 → 세션만 생성 (업로드 시 chatSessionId로 연결)
     @Transactional
     public ChatSessionResponse createSession(ChatSessionCreateRequest request, Long userId) {
         ChatSession chatSession = new ChatSession(
@@ -56,11 +59,8 @@ public class ChatService {
         );
         ChatSession savedSession = chatSessionRepository.save(chatSession);
 
-        // analysisIds 있으면 중간 테이블에 즉시 연결 (case2)
         List<Long> analysisIds = request.getAnalysisIds();
         if (analysisIds != null && !analysisIds.isEmpty()) {
-
-            // 모든 증권 조회 및 DONE 상태 검증
             List<PolicyAnalysisQueryRepository.PolicyAnalysisInfo> analysisInfos =
                     policyAnalysisQueryRepository.findInfoByAnalysisIds(analysisIds);
 
@@ -91,7 +91,6 @@ public class ChatService {
         chatMessageRequestValidator.validate(request);
 
         ChatSession chatSession = findChatSession(chatSessionId);
-
         QuestionType questionType = request.getQuestionType();
 
         // 첫 번째 질문이면 설문 데이터로 system_prompt 조립 후 저장
@@ -115,23 +114,31 @@ public class ChatService {
 
         ChatMessage savedUserMessage = chatMessageRepository.save(userMessage);
 
-        String aiAnswer = chatAnswerService.generateAnswer(chatSession, request);
+        ChatAnswerResult aiAnswer = chatAnswerService.generateAnswerResult(chatSession, request);
 
         ChatMessage aiMessage = new ChatMessage(
                 chatSession.getChatSessionId(),
                 SenderType.AI,
                 questionType,
-                aiAnswer,
+                aiAnswer.messageContent(),
                 false,
                 DEFAULT_DISCLAIMER
         );
 
         ChatMessage savedAiMessage = chatMessageRepository.save(aiMessage);
 
+        saveMessageSources(savedAiMessage.getMessageId(), aiAnswer.sources());
+
         return ChatMessagePairResponse.of(
                 chatSession.getChatSessionId(),
                 ChatMessageResponse.from(savedUserMessage),
-                ChatMessageResponse.from(savedAiMessage)
+                ChatMessageResponse.from(
+                        savedAiMessage,
+                        aiAnswer.claimGuide(),
+                        aiAnswer.amountGuide(),
+                        aiAnswer.documentGuide(),
+                        aiAnswer.hasSources()
+                )
         );
     }
 
@@ -145,17 +152,102 @@ public class ChatService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public ChatMessageSourceResponse getMessageSources(Long messageId) {
+        if (messageId == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "messageId는 필수입니다.");
+        }
+
+        ChatMessage chatMessage = chatMessageRepository.findById(messageId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST, "존재하지 않는 메시지입니다."));
+
+        if (chatMessage.getSenderType() != SenderType.AI) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "AI 답변 메시지의 근거만 조회할 수 있습니다.");
+        }
+
+        ChatSession chatSession = findChatSession(chatMessage.getChatSessionId());
+
+        if (chatSession.getTermsDocumentId() == null) {
+            return ChatMessageSourceResponse.termsNotUploaded(messageId);
+        }
+
+        List<ChatMessageSourceRepository.MessageSourceInfo> sourceInfos =
+                chatMessageSourceRepository.findSourceInfosByMessageId(messageId);
+
+        if (sourceInfos.isEmpty()) {
+            return ChatMessageSourceResponse.sourceNotFound(messageId);
+        }
+
+        List<ChatMessageSourceResponse.SourceItem> sources = sourceInfos.stream()
+                .map(source -> ChatMessageSourceResponse.SourceItem.builder()
+                        .sourceId(source.getSourceId())
+                        .chunkId(source.getChunkId())
+                        .title(buildSourceTitle(source))
+                        .citedText(buildCitedText(source))
+                        .clauseType(source.getClauseType())
+                        .relevanceScore(source.getRelevanceScore())
+                        .build())
+                .toList();
+
+        return ChatMessageSourceResponse.available(messageId, sources);
+    }
+
+    private String buildSourceTitle(ChatMessageSourceRepository.MessageSourceInfo source) {
+        if (source.getRiderName() != null && !source.getRiderName().isBlank()
+                && source.getClauseNo() != null && !source.getClauseNo().isBlank()) {
+            StringBuilder title = new StringBuilder();
+            title.append(source.getRiderName())
+                    .append(" ")
+                    .append(source.getClauseNo());
+            if (source.getClauseTitle() != null && !source.getClauseTitle().isBlank()) {
+                title.append(" ").append(source.getClauseTitle());
+            }
+            return title.toString();
+        }
+        if (source.getSectionTitle() != null && !source.getSectionTitle().isBlank()) {
+            return source.getSectionTitle();
+        }
+        return "약관 근거";
+    }
+
+    private String buildCitedText(ChatMessageSourceRepository.MessageSourceInfo source) {
+        if (source.getCitedText() != null && !source.getCitedText().isBlank()) {
+            return source.getCitedText();
+        }
+        return source.getChunkText();
+    }
+
+    private void saveMessageSources(Long messageId, List<AnswerSource> sources) {
+        if (sources == null || sources.isEmpty()) {
+            return;
+        }
+
+        List<ChatMessageSource> messageSources = sources.stream()
+                .filter(source -> source.chunkId() != null)
+                .map(source -> new ChatMessageSource(
+                        messageId,
+                        source.chunkId(),
+                        source.citedText(),
+                        source.relevanceScore()
+                ))
+                .toList();
+
+        if (messageSources.isEmpty()) {
+            return;
+        }
+
+        chatMessageSourceRepository.saveAll(messageSources);
+    }
+
     private ChatSession findChatSession(Long chatSessionId) {
         if (chatSessionId == null) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "chatSessionId는 필수입니다.");
         }
-
         return chatSessionRepository.findById(chatSessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CHAT_SESSION_NOT_FOUND));
     }
 
-    //TODO
-    // 설문 수정시 변경되어야될 부분 이쪽.
+    // TODO: 설문 수정시 변경되어야될 부분 이쪽.
     private String buildSystemPrompt(ChatMessageRequest request) {
         StringBuilder sb = new StringBuilder();
         sb.append("[사용자 상황 정보]\n");
@@ -266,27 +358,24 @@ public class ChatService {
 
     private String getDefaultUserQuestion(QuestionType questionType) {
         return switch (questionType) {
-            case CHIP_CLAIM -> "청구 가능한지 먼저 알고 싶어요";
-            case CHIP_AMOUNT -> "예상 보험금을 먼저 알고 싶어요";
+            case CHIP_CLAIM     -> "청구 가능한지 먼저 알고 싶어요";
+            case CHIP_AMOUNT    -> "예상 보험금을 먼저 알고 싶어요";
             case CHIP_DOCUMENTS -> "필요 서류를 먼저 알고 싶어요";
-            case CHIP_OVERVIEW -> "내 보험의 보장 항목부터 보고싶어요";
-            case FREE_TEXT -> "직접 입력할게요";
+            case CHIP_OVERVIEW  -> "내 보험의 보장 항목부터 보고싶어요";
+            case FREE_TEXT      -> "직접 입력할게요";
         };
     }
 
     private String joinTreatmentTypes(List<TreatmentType> treatmentTypes) {
         StringJoiner joiner = new StringJoiner(", ");
-
         for (TreatmentType treatmentType : treatmentTypes) {
             joiner.add(treatmentType.name());
         }
-
         return joiner.toString();
     }
 
     private void appendTreatmentStartDate(StringBuilder builder, ChatMessageRequest request) {
         if (request.getTreatmentStartDateType() == null) return;
-
         if (request.getTreatmentStartDateType() == TreatmentStartDateType.EXACT_DATE) {
             builder.append("- 치료 시작일: ").append(request.getTreatmentStartDate()).append("\n");
         } else if (request.getTreatmentStartDateType() == TreatmentStartDateType.YEAR_MONTH) {
@@ -326,7 +415,6 @@ public class ChatService {
                         .append(" / 탐지 여부: ")
                         .append(item.isDetected())
                         .append("\n");
-
                 if (item.detail() != null && !item.detail().isBlank()) {
                     builder.append("  세부 정보: ").append(item.detail()).append("\n");
                 }

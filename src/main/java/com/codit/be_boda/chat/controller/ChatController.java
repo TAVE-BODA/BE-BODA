@@ -5,6 +5,7 @@ import com.codit.be_boda.chat.dto.request.ChatSessionCreateRequest;
 import com.codit.be_boda.chat.dto.response.ChatMessagePairResponse;
 import com.codit.be_boda.chat.dto.response.ChatMessageResponse;
 import com.codit.be_boda.chat.dto.response.ChatSessionResponse;
+import com.codit.be_boda.chat.dto.response.ChatMessageSourceResponse;
 import com.codit.be_boda.chat.service.ChatService;
 import com.codit.be_boda.global.exception.BusinessException;
 import com.codit.be_boda.global.exception.ErrorCode;
@@ -78,6 +79,21 @@ public class ChatController {
             @PathVariable Long chatSessionId
     ) {
         List<ChatMessageResponse> response = chatService.getMessages(chatSessionId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "AI 답변 약관 근거 조회",
+            description = "AI 답변 메시지 ID 기준으로 약관 근거를 조회합니다. 약관이 업로드되지 않았거나 근거가 없는 경우 상태값과 안내 문구를 반환합니다."
+    )
+    @ApiResponse(responseCode = "200", description = "약관 근거 조회 성공")
+    @ApiResponse(responseCode = "400", description = "잘못된 요청 또는 USER 메시지 ID")
+    @ApiResponse(responseCode = "404", description = "존재하지 않는 메시지 또는 채팅방")
+    @GetMapping("/messages/{messageId}/sources")
+    public ResponseEntity<ChatMessageSourceResponse> getMessageSources(
+            @PathVariable Long messageId
+    ) {
+        ChatMessageSourceResponse response = chatService.getMessageSources(messageId);
         return ResponseEntity.ok(response);
     }
 

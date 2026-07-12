@@ -1,0 +1,20 @@
+$kind: http-request
+description: |
+  약관 PDF를 업로드합니다.
+  chatSessionId를 포함하면 파싱 완료 후 해당 채팅방에 자동 연결됩니다.
+  chatSessionId가 없으면 파싱만 진행합니다 (마이페이지에서 나중에 연결 가능).
+url: "{{baseUrl}}/api/upload/terms?chatSessionId=8002"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: "*/*"
+queryParams:
+  chatSessionId: "8002"
+body:
+  type: json
+  content: |-
+    {
+      "file": "string"
+    }
+examples: ./.resources/보험약관 PDF 업로드.resources/examples
+order: 2000

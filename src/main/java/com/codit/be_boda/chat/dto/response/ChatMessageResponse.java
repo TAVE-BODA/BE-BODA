@@ -3,6 +3,8 @@ package com.codit.be_boda.chat.dto.response;
 import com.codit.be_boda.chat.entity.ChatMessage;
 import com.codit.be_boda.chat.type.QuestionType;
 import com.codit.be_boda.chat.type.SenderType;
+import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
+import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import lombok.Builder;
 import lombok.Getter;
 
@@ -21,8 +23,23 @@ public class ChatMessageResponse {
     private String disclaimerText;
     private Boolean hasSources;
     private LocalDateTime createdAt;
+    private DocumentGuideResponse documentGuide;
+    private ClaimGuideResponse claimGuide;
+    private AmountGuideResponse amountGuide;
 
+    // 카드 DTO 없는 기본 메시지 응답 생성
     public static ChatMessageResponse from(ChatMessage chatMessage) {
+        return from(chatMessage, null, null, null, false);
+    }
+
+    // 카드 DTO 포함 메시지 응답 생성
+    public static ChatMessageResponse from(
+            ChatMessage chatMessage,
+            ClaimGuideResponse claimGuide,
+            AmountGuideResponse amountGuide,
+            DocumentGuideResponse documentGuide,
+            Boolean hasSources
+    ) {
         return ChatMessageResponse.builder()
                 .messageId(chatMessage.getMessageId())
                 .senderType(chatMessage.getSenderType())
@@ -30,7 +47,10 @@ public class ChatMessageResponse {
                 .messageContent(chatMessage.getMessageContent())
                 .usedFallback(chatMessage.getUsedFallback())
                 .disclaimerText(chatMessage.getDisclaimerText())
-                .hasSources(false) // 약관 근거 연결 시 true, false 처리
+                .hasSources(hasSources)
+                .claimGuide(claimGuide)
+                .amountGuide(amountGuide)
+                .documentGuide(documentGuide)
                 .createdAt(chatMessage.getCreatedAt())
                 .build();
     }

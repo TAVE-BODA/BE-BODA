@@ -1,0 +1,92 @@
+$kind: http-example
+request:
+  url: "{{baseUrl}}/api/dashboard/:analysisId"
+  method: GET
+  headers:
+    Accept: "*/*"
+  pathVariables:
+    analysisId: "8002"
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: "*/*"
+  body:
+    type: text
+    content: |-
+      {
+        "analysisId": 6876,
+        "analysisStatus": "string",
+        "companyName": "string",
+        "insuranceStartDate": "string",
+        "insuranceEndDate": "string",
+        "coverages": [
+          {
+            "coverageType": "string",
+            "isDetected": false,
+            "items": [
+              {
+                "coverageName": "string",
+                "amounts": [
+                  {
+                    "condition": "string",
+                    "coverageAmount": 3426
+                  },
+                  {
+                    "condition": "string",
+                    "coverageAmount": 7442
+                  }
+                ]
+              },
+              {
+                "coverageName": "string",
+                "amounts": [
+                  {
+                    "condition": "string",
+                    "coverageAmount": 1369
+                  },
+                  {
+                    "condition": "string",
+                    "coverageAmount": 5757
+                  }
+                ]
+              }
+            ],
+            "exclusionKeywords": "string"
+          },
+          {
+            "coverageType": "string",
+            "isDetected": true,
+            "items": [
+              {
+                "coverageName": "string",
+                "amounts": [
+                  {
+                    "condition": "string",
+                    "coverageAmount": 8921
+                  },
+                  {
+                    "condition": "string",
+                    "coverageAmount": 5253
+                  }
+                ]
+              },
+              {
+                "coverageName": "string",
+                "amounts": [
+                  {
+                    "condition": "string",
+                    "coverageAmount": 7785
+                  },
+                  {
+                    "condition": "string",
+                    "coverageAmount": 8008
+                  }
+                ]
+              }
+            ],
+            "exclusionKeywords": "string"
+          }
+        ]
+      }
+order: 1000
