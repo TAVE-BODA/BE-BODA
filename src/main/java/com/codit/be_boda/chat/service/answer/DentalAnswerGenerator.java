@@ -3,6 +3,7 @@ package com.codit.be_boda.chat.service.answer;
 import com.codit.be_boda.analysis.dto.CoverageAmountDto;
 import com.codit.be_boda.analysis.dto.CoverageItemDto;
 import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
+import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.request.DentalInfoRequest;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
@@ -62,6 +63,111 @@ public class DentalAnswerGenerator {
         });
 
         return answer.toString();
+    }
+
+    // CHIP_CLAIM 중 DENTAL 문자열 응답과 DTO 카드 데이터 생성
+    public ClaimAnswerResult generateStructuredClaimAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        String messageContent = generateClaimAnswer(analysisId, request);
+        DentalInfoRequest dentalInfo = request.getDentalInfo();
+
+        if (dentalInfo == null
+                || dentalInfo.getDentalTreatmentTypes() == null
+                || dentalInfo.getDentalTreatmentTypes().isEmpty()) {
+
+            ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                    .claimStatus("NEEDS_REVIEW")
+                    .summary("치아 치료 종류를 확인하기 위한 정보가 필요해요.")
+                    .reasons(List.of(
+                            "어떤 치아 치료를 받았는지 확인되지 않았어요."
+                    ))
+                    .cautions(List.of(
+                            "치아 치료 종류를 입력하면 가입한 치아 보장과 비교할 수 있어요."
+                    ))
+                    .build();
+
+            return new ClaimAnswerResult(messageContent, claimGuide);
+        }
+
+        List<CoverageItemDto> matchedItems =
+                findMatchedDentalItems(analysisId, dentalInfo);
+
+        if (matchedItems.isEmpty()) {
+            ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                    .claimStatus("NOT_AVAILABLE")
+                    .summary("입력하신 치아 치료와 매칭되는 보장 항목을 찾지 못했어요.")
+                    .reasons(List.of(
+                            "가입하신 증권에서 선택한 치아 치료와 직접 매칭되는 보장이 확인되지 않았어요."
+                    ))
+                    .cautions(List.of(
+                            "다른 치아 특약이나 약관에 관련 보장이 있는지 추가 확인이 필요할 수 있어요."
+                    ))
+                    .build();
+
+            return new ClaimAnswerResult(messageContent, claimGuide);
+        }
+
+        List<String> reasons = new ArrayList<>();
+
+        String selectedTreatments = String.join(
+                ", ",
+                dentalInfo.getDentalTreatmentTypes().stream()
+                        .map(this::getDentalTreatmentDescription)
+                        .toList()
+        );
+
+        reasons.add("입력하신 치아 치료 종류는 " + selectedTreatments + "예요.");
+
+        for (CoverageItemDto item : matchedItems) {
+            reasons.add(
+                    "가입하신 증권에서 "
+                            + item.coverageName()
+                            + " 보장이 확인돼요."
+            );
+
+            String amountText = buildAmountTextWithoutTotal(item);
+
+            if (!amountText.isBlank()) {
+                reasons.add(
+                        "확인된 보장금액은 "
+                                + amountText
+                                + "이에요."
+                );
+            }
+        }
+
+        if (dentalInfo.getDentalTreatmentCountType()
+                == DentalTreatmentCountType.EXACT_COUNT
+                && dentalInfo.getDentalTreatmentCount() != null) {
+
+            reasons.add(
+                    "입력하신 치료 치아 개수는 "
+                            + dentalInfo.getDentalTreatmentCount()
+                            + "개예요."
+            );
+        }
+
+        List<String> cautions = new ArrayList<>();
+
+        if (dentalInfo.getDentalTreatmentTypes()
+                .contains(DentalTreatmentType.EXTRACTION)) {
+            cautions.add("유치가 아닌 영구치 발치인지 확인이 필요해요.");
+        }
+
+        if (hasPeriodCondition(matchedItems)) {
+            cautions.add("가입 후 경과 기간에 따라 지급금액이 달라질 수 있어요.");
+        }        cautions.add("실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요.");
+
+        ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                .claimStatus("POSSIBLE")
+                .summary("입력하신 치아 치료와 매칭되는 보장이 확인돼 청구 가능성이 있어요.")
+                .reasons(reasons)
+                .cautions(cautions)
+                .build();
+
+        return new ClaimAnswerResult(messageContent, claimGuide);
     }
 
     // CHIP_AMOUNT 중 DENTAL 처리
@@ -191,9 +297,18 @@ public class DentalAnswerGenerator {
             DentalTreatmentType dentalTreatmentType
     ) {
         if (dentalTreatmentType == DentalTreatmentType.EXTRACTION) {
-            return coverageName.contains("영구치발치보험금")
-                    || coverageName.contains("발치보험금")
-                    || coverageName.contains("치아발거보험금");
+            boolean isExtractionCoverage =
+                    coverageName.contains("영구치발치")
+                            || coverageName.contains("발치보험금")
+                            || coverageName.contains("치아발거");
+
+            boolean isProstheticCoverage =
+                    coverageName.contains("브릿지")
+                            || coverageName.contains("임플란트")
+                            || coverageName.contains("고정성가공의치")
+                            || coverageName.contains("보철");
+
+            return isExtractionCoverage && !isProstheticCoverage;
         }
 
         if (dentalTreatmentType == DentalTreatmentType.CROWN_IMPLANT) {
@@ -314,6 +429,31 @@ public class DentalAnswerGenerator {
         return builder.toString();
     }
 
+    private boolean hasPeriodCondition(List<CoverageItemDto> items) {
+        for (CoverageItemDto item : items) {
+            if (item.amounts() == null || item.amounts().isEmpty()) {
+                continue;
+            }
+
+            for (CoverageAmountDto amount : item.amounts()) {
+                String condition = amount.condition();
+
+                if (condition == null || condition.isBlank()) {
+                    continue;
+                }
+
+                if (condition.contains("이내")
+                        || condition.contains("초과")
+                        || condition.contains("가입")
+                        || condition.contains("계약")) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     // 후보 안내 케이스에서 금액만 보여주는 문구 생성
     private String buildAmountTextWithoutTotal(CoverageItemDto item) {
         if (item.amounts() == null || item.amounts().isEmpty()) {
@@ -329,8 +469,14 @@ public class DentalAnswerGenerator {
                 builder.append(", ");
             }
 
-            builder.append(amount.condition())
-                    .append(" ");
+            String condition = amount.condition();
+
+            if (condition != null
+                    && !condition.isBlank()
+                    && !"조건없음".equals(condition)) {
+                builder.append(condition)
+                        .append(" ");
+            }
 
             if (amount.coverageAmount() == null) {
                 builder.append("약관 확인 필요");
@@ -367,6 +513,22 @@ public class DentalAnswerGenerator {
                 .append(resolveDentalTreatmentCount(dentalInfo))
                 .append("개 기준으로 계산했어요.\n")
                 .append("실제 지급 여부는 치료 종류와 약관상 조건에 따라 달라질 수 있어요.\n");
+    }
+
+    // 치료형 변환 메서드 추가
+    private String getDentalTreatmentDescription(
+            DentalTreatmentType dentalTreatmentType
+    ) {
+        if (dentalTreatmentType == null) {
+            return "치료 종류 미확인";
+        }
+
+        return switch (dentalTreatmentType) {
+            case EXTRACTION -> "발치";
+            case CROWN_IMPLANT -> "크라운·임플란트·보철 치료";
+            case FILLING -> "충전·보존 치료";
+            case ROOT_CANAL -> "신경·근관 치료";
+        };
     }
 
     private String normalize(String value) {

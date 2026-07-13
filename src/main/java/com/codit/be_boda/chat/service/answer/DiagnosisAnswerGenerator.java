@@ -4,6 +4,7 @@ import com.codit.be_boda.analysis.dto.CoverageAmountDto;
 import com.codit.be_boda.analysis.dto.CoverageItemDto;
 import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
+import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,6 +56,78 @@ public class DiagnosisAnswerGenerator {
                 .append("\n정확한 청구 가능 여부는 진단서의 병명 또는 질병코드와 약관 조건 확인이 필요해요.");
 
         return answer.toString();
+    }
+
+    // CHIP_CLAIM 중 DIAGNOSIS_ONLY 문자열 응답과 DTO 카드 데이터 생성
+    public ClaimAnswerResult generateStructuredClaimAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        String messageContent = generateClaimAnswer(analysisId, request);
+        String diagnosisMessage = request.getMessage();
+
+        if (isBlank(diagnosisMessage)) {
+            ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                    .claimStatus("NEEDS_REVIEW")
+                    .summary("청구 가능성 확인을 위해 진단명이 필요해요.")
+                    .reasons(List.of(
+                            "입력된 진단명이 없어 관련 진단비 보장을 검색할 수 없어요."
+                    ))
+                    .cautions(List.of(
+                            "진단서나 진료확인서에 적힌 병명 또는 질병코드를 입력해 주세요."
+                    ))
+                    .build();
+
+            return new ClaimAnswerResult(messageContent, claimGuide);
+        }
+
+        if (isAmbiguousDiagnosisMessage(diagnosisMessage)) {
+            ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                    .claimStatus("NEEDS_REVIEW")
+                    .summary("진단명을 조금 더 구체적으로 입력해 주세요.")
+                    .reasons(List.of(
+                            "현재 입력만으로는 어떤 진단비 보장과 관련된 내용인지 판단하기 어려워요."
+                    ))
+                    .cautions(List.of(
+                            "진단서의 병명 또는 질병코드를 입력하면 더 정확하게 확인할 수 있어요."
+                    ))
+                    .build();
+
+            return new ClaimAnswerResult(messageContent, claimGuide);
+        }
+
+        List<CoverageItemDto> matchedItems =
+                findMatchedDiagnosisItems(analysisId, diagnosisMessage);
+
+        if (matchedItems.isEmpty()) {
+            ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                    .claimStatus("NOT_AVAILABLE")
+                    .summary("입력하신 진단명과 매칭되는 보장 후보를 찾지 못했어요.")
+                    .reasons(List.of(
+                            "현재 증권 분석 결과에서 "
+                                    + diagnosisMessage
+                                    + "과 직접 매칭되는 진단비 보장이 확인되지 않았어요."
+                    ))
+                    .cautions(List.of(
+                            "다른 특약이나 약관 원문에 관련 보장이 있는지 추가 확인이 필요할 수 있어요.",
+                            "진단서의 정확한 병명이나 질병코드가 있다면 다시 입력해 주세요."
+                    ))
+                    .build();
+
+            return new ClaimAnswerResult(messageContent, claimGuide);
+        }
+
+        List<String> reasons = buildDiagnosisReasons(matchedItems);
+        List<String> cautions = buildDiagnosisCautions(matchedItems);
+
+        ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
+                .claimStatus("NEEDS_REVIEW")
+                .summary("관련 진단비 보장 후보가 확인됐지만 정확한 진단 조건 확인이 필요해요.")
+                .reasons(reasons)
+                .cautions(cautions)
+                .build();
+
+        return new ClaimAnswerResult(messageContent, claimGuide);
     }
 
 
@@ -276,6 +349,31 @@ public class DiagnosisAnswerGenerator {
         return builder.toString();
     }
 
+    private List<String> buildDiagnosisReasons(
+            List<CoverageItemDto> matchedItems
+    ) {
+        List<String> reasons = new ArrayList<>();
+
+        for (CoverageItemDto item : matchedItems) {
+            String amountSummary = buildDiagnosisAmountSummary(item);
+
+            if (amountSummary.isBlank()) {
+                reasons.add(
+                        item.coverageName()
+                                + " 보장 후보가 확인됐어요."
+                );
+            } else {
+                reasons.add(
+                        item.coverageName()
+                                + " 보장 후보가 확인됐어요: "
+                                + amountSummary
+                );
+            }
+        }
+
+        return reasons;
+    }
+
     private String buildAmbiguousDiagnosisAnswer() {
         return """
                 진단명을 조금 더 정확히 입력해 주세요.
@@ -321,6 +419,61 @@ public class DiagnosisAnswerGenerator {
         }
 
         return String.format("%,d원", amount);
+    }
+
+    private String buildDiagnosisAmountSummary(CoverageItemDto item) {
+        if (item.amounts() == null || item.amounts().isEmpty()) {
+            return "";
+        }
+
+        List<String> amountTexts = new ArrayList<>();
+
+        for (CoverageAmountDto amount : item.amounts()) {
+            String condition = amount.condition();
+            String amountText = formatAmount(amount.coverageAmount());
+
+            if (condition == null
+                    || condition.isBlank()
+                    || "조건없음".equals(condition)) {
+                amountTexts.add(amountText);
+            } else {
+                amountTexts.add(condition + " " + amountText);
+            }
+        }
+
+        return String.join(", ", amountTexts);
+    }
+
+    private List<String> buildDiagnosisCautions(
+            List<CoverageItemDto> matchedItems
+    ) {
+        List<String> cautions = new ArrayList<>();
+
+        boolean hasToothFractureExclusion = matchedItems.stream()
+                .map(CoverageItemDto::coverageName)
+                .filter(name -> name != null)
+                .anyMatch(name ->
+                        name.contains("치아 파절")
+                                || name.contains("치아파절")
+                );
+
+        boolean hasFiveMajorFracture = matchedItems.stream()
+                .map(CoverageItemDto::coverageName)
+                .filter(name -> name != null)
+                .anyMatch(name -> name.contains("5대"));
+
+        if (hasToothFractureExclusion) {
+            cautions.add("재해골절 진단 보장은 치아 파절이 제외될 수 있어요.");
+        }
+
+        if (hasFiveMajorFracture) {
+            cautions.add("5대 재해골절 해당 여부에 따라 적용되는 보장금액이 달라질 수 있어요.");
+        }
+
+        cautions.add("진단서의 병명 또는 질병코드와 약관상 지급 조건 확인이 필요해요.");
+        cautions.add("실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요.");
+
+        return cautions;
     }
 
 
