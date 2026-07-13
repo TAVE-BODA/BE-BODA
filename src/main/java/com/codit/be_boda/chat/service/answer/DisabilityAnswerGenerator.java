@@ -3,6 +3,7 @@ package com.codit.be_boda.chat.service.answer;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import org.springframework.stereotype.Component;
 import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
+import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 
 import java.util.List;
 
@@ -66,5 +67,31 @@ public class DisabilityAnswerGenerator {
                 .append("따라서 현재 단계에서는 예상 보험금을 하나로 계산하지 않고, 장해율 및 약관 확인이 필요한 항목으로 안내드릴게요.");
 
         return answer.toString();
+    }
+
+    // CHIP_AMOUNT 중 DISABILITY 문자열 응답과 카드 데이터 생성
+    public AmountAnswerResult generateStructuredAmountAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        String messageContent =
+                generateAmountAnswer(analysisId, request);
+
+        AmountGuideResponse amountGuide =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(false)
+                        .estimatedItems(List.of())
+                        .cautions(List.of(
+                                "현재 증권 분석 결과에서 후유장해 보장 가입금액을 확인하기 어려워요.",
+                                "예상 보험금 계산을 위해 장해 부위와 장해율 또는 지급률이 필요해요.",
+                                "약관상 장해분류표와 지급 제한 조건 확인이 필요해요.",
+                                "실제 지급 여부는 보험사 심사 결과에 따라 달라질 수 있어요."
+                        ))
+                        .build();
+
+        return new AmountAnswerResult(
+                messageContent,
+                amountGuide
+        );
     }
 }

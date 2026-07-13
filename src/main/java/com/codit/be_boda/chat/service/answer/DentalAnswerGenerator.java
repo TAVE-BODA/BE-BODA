@@ -3,6 +3,7 @@ package com.codit.be_boda.chat.service.answer;
 import com.codit.be_boda.analysis.dto.CoverageAmountDto;
 import com.codit.be_boda.analysis.dto.CoverageItemDto;
 import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
+import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.request.DentalInfoRequest;
@@ -249,6 +250,180 @@ public class DentalAnswerGenerator {
         return answer.toString();
     }
 
+    // CHIP_AMOUNT 중 DENTAL 문자열 응답과 카드 데이터 생성
+    public AmountAnswerResult generateStructuredAmountAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        String messageContent =
+                generateAmountAnswer(analysisId, request);
+
+        DentalInfoRequest dentalInfo =
+                request.getDentalInfo();
+
+        if (dentalInfo == null
+                || dentalInfo.getDentalTreatmentTypes() == null
+                || dentalInfo.getDentalTreatmentTypes().isEmpty()) {
+
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "예상 보험금 계산을 위해 치아 치료 종류를 선택해 주세요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        List<CoverageItemDto> matchedItems =
+                findMatchedDentalItems(
+                        analysisId,
+                        dentalInfo
+                );
+
+        if (matchedItems.isEmpty()) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "입력하신 치아 치료와 직접 매칭되는 보장 항목을 찾지 못했어요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        boolean calculationAvailable =
+                canCalculateTotalAmount(dentalInfo)
+                        && calculateTotalAmount(
+                        matchedItems,
+                        dentalInfo
+                ) != null;
+
+        int treatmentCount =
+                resolveDentalTreatmentCount(dentalInfo);
+
+        List<AmountGuideResponse.EstimatedItem> estimatedItems =
+                matchedItems.stream()
+                        .map(item ->
+                                AmountGuideResponse.EstimatedItem.builder()
+                                        .coverageName(
+                                                item.coverageName()
+                                        )
+                                        .amountText(
+                                                buildDentalGuideAmountText(
+                                                        item,
+                                                        dentalInfo,
+                                                        calculationAvailable
+                                                )
+                                        )
+                                        .reason(
+                                                calculationAvailable
+                                                        ? treatmentCount
+                                                          + "개 기준으로 계산한 예상 금액이에요."
+                                                        : "실제 치료 종류와 가입 시점 조건에 따라 금액이 달라질 수 있어요."
+                                        )
+                                        .build()
+                        )
+                        .toList();
+
+        List<String> cautions = new ArrayList<>();
+
+        if (!calculationAvailable) {
+            cautions.add(
+                    "선택한 항목에 여러 치료가 포함된 경우 실제 치료명을 확인해야 정확한 금액을 계산할 수 있어요."
+            );
+        }
+
+        if (isUnknownDentalTreatmentCount(dentalInfo)) {
+            cautions.add(
+                    "치료 개수를 정확히 알 수 없어 1개 기준으로 안내했어요."
+            );
+        }
+
+        if (hasPeriodCondition(matchedItems)) {
+            cautions.add(
+                    "가입 후 경과 기간에 따라 지급금액이 달라질 수 있어요."
+            );
+        }
+
+        cautions.add(
+                "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+        );
+
+        AmountGuideResponse amountGuide =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(
+                                calculationAvailable
+                        )
+                        .estimatedItems(estimatedItems)
+                        .cautions(cautions)
+                        .build();
+
+        return new AmountAnswerResult(
+                messageContent,
+                amountGuide
+        );
+    }
+
+    private String buildDentalGuideAmountText(
+            CoverageItemDto item,
+            DentalInfoRequest dentalInfo,
+            boolean calculationAvailable
+    ) {
+        if (item.amounts() == null
+                || item.amounts().isEmpty()) {
+            return "약관 확인 필요";
+        }
+
+        // 하나의 총액을 계산할 수 없는 경우 조건별 후보 금액 표시
+        if (!calculationAvailable) {
+            String amountText =
+                    buildAmountTextWithoutTotal(item);
+
+            return amountText.isBlank()
+                    ? "약관 확인 필요"
+                    : amountText;
+        }
+
+        // 조건별 금액이 여러 개인 경우
+        if (item.amounts().size() > 1) {
+            String amountText =
+                    buildAmountText(item, dentalInfo);
+
+            return amountText.isBlank()
+                    ? "약관 확인 필요"
+                    : amountText;
+        }
+
+        CoverageAmountDto amount =
+                item.amounts().get(0);
+
+        if (amount.coverageAmount() == null) {
+            return "약관 확인 필요";
+        }
+
+        int treatmentCount =
+                resolveDentalTreatmentCount(dentalInfo);
+
+        long totalAmount =
+                amount.coverageAmount() * treatmentCount;
+
+        return String.format(
+                "%,d원",
+                totalAmount
+        );
+    }
+
     private List<CoverageItemDto> findMatchedDentalItems(
             Long analysisId,
             DentalInfoRequest dentalInfo
@@ -404,8 +579,14 @@ public class DentalAnswerGenerator {
                 builder.append(", ");
             }
 
-            builder.append(amount.condition())
-                    .append(" ");
+            String condition = amount.condition();
+
+            if (condition != null
+                    && !condition.isBlank()
+                    && !"조건없음".equals(condition)) {
+                builder.append(condition)
+                        .append(" ");
+            }
 
             if (amount.coverageAmount() == null) {
                 builder.append("약관 확인 필요");

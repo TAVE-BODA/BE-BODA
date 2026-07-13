@@ -404,8 +404,50 @@ public class ChatAnswerService {
             Long analysisId,
             ChatMessageRequest request
     ) {
+        if (hasTreatmentType(request, TreatmentType.CAST)) {
+            return castAnswerGenerator.generateStructuredAmountAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
         if (hasTreatmentType(request, TreatmentType.SURGERY)) {
             return surgeryAnswerGenerator.generateStructuredAmountAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+        if (hasTreatmentType(request, TreatmentType.HOSPITALIZATION)) {
+            return hospitalizationAnswerGenerator.generateStructuredAmountAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+        if (hasTreatmentType(request, TreatmentType.DENTAL)) {
+            return dentalAnswerGenerator.generateStructuredAmountAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+        if (hasTreatmentType(request, TreatmentType.DIAGNOSIS_ONLY)) {
+            return diagnosisAnswerGenerator.generateStructuredAmountAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+        if (hasTreatmentType(request, TreatmentType.OUTPATIENT)) {
+            return outpatientAnswerGenerator.generateStructuredAmountAnswer(
+                    analysisId,
+                    request
+            );
+        }
+
+        if (hasTreatmentType(request, TreatmentType.DISABILITY)) {
+            return disabilityAnswerGenerator.generateStructuredAmountAnswer(
                     analysisId,
                     request
             );
