@@ -3,6 +3,11 @@ package com.codit.be_boda.chat.service;
 import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
 import com.codit.be_boda.chat.dto.response.DocumentGuideResponse;
+import com.codit.be_boda.chat.repository.TermsChunkQueryRepository;
+import com.codit.be_boda.chat.repository.TermsChunkQueryRepository.TermsChunkInfo;
+
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import java.util.List;
 
@@ -35,6 +40,22 @@ public record ChatAnswerResult(
                 null,
                 false,
                 List.of()
+        );
+    }
+
+    public static ChatAnswerResult claim(
+            String messageContent,
+            ClaimGuideResponse claimGuide,
+            boolean hasSources,
+            List<AnswerSource> sources
+    ) {
+        return new ChatAnswerResult(
+                messageContent,
+                claimGuide,
+                null,
+                null,
+                hasSources,
+                sources == null ? List.of() : sources
         );
     }
 
