@@ -404,65 +404,102 @@ public class ChatAnswerService {
             Long analysisId,
             ChatMessageRequest request
     ) {
-        if (hasTreatmentType(request, TreatmentType.CAST)) {
-            return castAnswerGenerator.generateStructuredAmountAnswer(
-                    analysisId,
-                    request
+        List<TreatmentType> treatmentTypes =
+                request.getTreatmentTypes();
+
+        if (treatmentTypes == null
+                || treatmentTypes.isEmpty()) {
+
+            String messageContent =
+                    generateAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            AmountGuideResponse amountGuide =
+                    buildAmountGuide(request);
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
             );
         }
 
-        if (hasTreatmentType(request, TreatmentType.SURGERY)) {
-            return surgeryAnswerGenerator.generateStructuredAmountAnswer(
+        // 단일 치료
+        if (treatmentTypes.size() == 1) {
+            return generateSingleAmountAnswerResult(
                     analysisId,
-                    request
+                    request,
+                    treatmentTypes.get(0)
             );
         }
 
-        if (hasTreatmentType(request, TreatmentType.HOSPITALIZATION)) {
-            return hospitalizationAnswerGenerator.generateStructuredAmountAnswer(
-                    analysisId,
-                    request
-            );
-        }
+        // 복수 치료
+        List<TreatmentAmountResult> results =
+                treatmentTypes.stream()
+                        .map(treatmentType ->
+                                new TreatmentAmountResult(
+                                        treatmentType,
+                                        generateSingleAmountAnswerResult(
+                                                analysisId,
+                                                request,
+                                                treatmentType
+                                        )
+                                )
+                        )
+                        .toList();
 
-        if (hasTreatmentType(request, TreatmentType.DENTAL)) {
-            return dentalAnswerGenerator.generateStructuredAmountAnswer(
-                    analysisId,
-                    request
-            );
-        }
+        return mergeAmountResults(results);
+    }
 
-        if (hasTreatmentType(request, TreatmentType.DIAGNOSIS_ONLY)) {
-            return diagnosisAnswerGenerator.generateStructuredAmountAnswer(
-                    analysisId,
-                    request
-            );
-        }
+    private AmountAnswerResult generateSingleAmountAnswerResult(
+            Long analysisId,
+            ChatMessageRequest request,
+            TreatmentType treatmentType
+    ) {
+        return switch (treatmentType) {
+            case CAST ->
+                    castAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
 
-        if (hasTreatmentType(request, TreatmentType.OUTPATIENT)) {
-            return outpatientAnswerGenerator.generateStructuredAmountAnswer(
-                    analysisId,
-                    request
-            );
-        }
+            case SURGERY ->
+                    surgeryAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
 
-        if (hasTreatmentType(request, TreatmentType.DISABILITY)) {
-            return disabilityAnswerGenerator.generateStructuredAmountAnswer(
-                    analysisId,
-                    request
-            );
-        }
+            case HOSPITALIZATION ->
+                    hospitalizationAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
 
-        String messageContent =
-                generateAmountAnswer(analysisId, request);
+            case DENTAL ->
+                    dentalAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
 
-        AmountGuideResponse amountGuide =
-                buildAmountGuide(request);
+            case DIAGNOSIS_ONLY ->
+                    diagnosisAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
 
-        return new AmountAnswerResult(
-                messageContent,
-                amountGuide
-        );
+            case OUTPATIENT ->
+                    outpatientAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            case DISABILITY ->
+                    disabilityAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+        };
     }
 
     // CHIP_CLAIM 문자열 응답 생성
@@ -579,6 +616,116 @@ public class ChatAnswerService {
         return "입력하신 치료 항목에 대한 예상 보험금 계산은 아직 준비 중입니다.";
     }
 
+    private AmountAnswerResult mergeAmountResults(
+            List<TreatmentAmountResult> results
+    ) {
+        StringBuilder messageContent =
+                new StringBuilder();
+
+        List<AmountGuideResponse.EstimatedItem> estimatedItems =
+                new ArrayList<>();
+
+        List<String> cautions =
+                new ArrayList<>();
+
+        boolean anyCalculationAvailable = false;
+        boolean allCalculationAvailable = true;
+
+        for (TreatmentAmountResult treatmentResult : results) {
+            String treatmentLabel =
+                    getTreatmentTypeLabel(
+                            treatmentResult.treatmentType()
+                    );
+
+            AmountAnswerResult result =
+                    treatmentResult.result();
+
+            messageContent.append("[")
+                    .append(treatmentLabel)
+                    .append("]\n")
+                    .append(result.messageContent())
+                    .append("\n\n");
+
+            AmountGuideResponse amountGuide =
+                    result.amountGuide();
+
+            if (amountGuide == null) {
+                allCalculationAvailable = false;
+                continue;
+            }
+
+            boolean calculationAvailable =
+                    Boolean.TRUE.equals(
+                            amountGuide.getCalculationAvailable()
+                    );
+
+            if (calculationAvailable) {
+                anyCalculationAvailable = true;
+            } else {
+                allCalculationAvailable = false;
+            }
+
+            if (amountGuide.getEstimatedItems() != null) {
+                for (AmountGuideResponse.EstimatedItem item
+                        : amountGuide.getEstimatedItems()) {
+
+                    String reason = item.getReason();
+
+                    estimatedItems.add(
+                            AmountGuideResponse.EstimatedItem.builder()
+                                    .coverageName(
+                                            item.getCoverageName()
+                                    )
+                                    .amountText(
+                                            item.getAmountText()
+                                    )
+                                    .reason(
+                                            reason == null
+                                                    || reason.isBlank()
+                                                    ? "[" + treatmentLabel + "] 금액 후보예요."
+                                                    : "[" + treatmentLabel + "] " + reason
+                                    )
+                                    .build()
+                    );
+                }
+            }
+
+            if (amountGuide.getCautions() != null) {
+                for (String caution
+                        : amountGuide.getCautions()) {
+
+                    if (!cautions.contains(caution)) {
+                        cautions.add(caution);
+                    }
+                }
+            }
+        }
+
+        // 일부 치료만 계산 가능한 경우
+        if (anyCalculationAvailable
+                && !allCalculationAvailable) {
+
+            cautions.add(
+                    0,
+                    "일부 치료 항목은 필요한 정보가 부족해 전체 예상 보험금을 계산하지 못했어요."
+            );
+        }
+
+        AmountGuideResponse amountGuide =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(
+                                allCalculationAvailable
+                        )
+                        .estimatedItems(estimatedItems)
+                        .cautions(cautions)
+                        .build();
+
+        return new AmountAnswerResult(
+                messageContent.toString().trim(),
+                amountGuide
+        );
+    }
+
     private boolean hasTreatmentType(
             ChatMessageRequest request,
             TreatmentType treatmentType
@@ -592,6 +739,12 @@ public class ChatAnswerService {
     private record TreatmentClaimResult(
             TreatmentType treatmentType,
             ClaimAnswerResult result
+    ) {
+    }
+
+    private record TreatmentAmountResult(
+            TreatmentType treatmentType,
+            AmountAnswerResult result
     ) {
     }
 }
