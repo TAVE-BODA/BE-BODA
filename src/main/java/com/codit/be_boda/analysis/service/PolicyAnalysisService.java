@@ -6,6 +6,7 @@ import com.codit.be_boda.chat.entity.ChatSessionPolicy;
 import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
 import com.codit.be_boda.analysis.repository.CoverageItemRepository;
 import com.codit.be_boda.analysis.repository.PolicyAnalysisRepository;
+import com.codit.be_boda.upload.service.PdfExtractService;
 import com.codit.be_boda.upload.service.S3Service;
 import com.codit.be_boda.user.domain.User;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -20,7 +21,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.codit.be_boda.dashboard.service.DashboardService;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -42,6 +45,7 @@ public class PolicyAnalysisService {
     private final OpenAiChatModel chatModel;
     private final ObjectMapper objectMapper;
     private final AsyncPolicyAnalysisService asyncPolicyAnalysisService;
+    private final PdfExtractService pdfExtractService;
 
     @Value("${app.llm.mini-model:gpt-4o-mini}")
     private String miniModel;
@@ -78,5 +82,71 @@ public class PolicyAnalysisService {
         // 별도 클래스 호출 → Spring AOP 프록시 경유 → @Async 정상 동작
         asyncPolicyAnalysisService.analyzeAsync(analysis, chatSessionId);
         return analysis;
+    }
+
+//    여러 증권을 모두 저장하고 채팅방에 연결 -> 마지막에 비동기 분석 시작
+    @Transactional
+    public List<Long> createAndStartMultipleAnalyses(
+            User user,
+            List<MultipartFile> files,
+            Long chatSessionId
+    ) {
+        // 생성된 여러 PolicyAnalysis를 임시로 보관
+        List<PolicyAnalysis> analyses = new ArrayList<>();
+
+//      1. 모든 pdf를 추출하고 PolicyAnalysis에 저장
+        for (MultipartFile file : files) {
+            PdfExtractService.ExtractResult extracted =
+                    pdfExtractService.extract(file);
+
+            if (!extracted.success()) {
+                throw new IllegalArgumentException(
+                        "PDF 추출 실패: "
+                                + file.getOriginalFilename()
+                                + " / "
+                                + extracted.errorMessage()
+                );
+            }
+
+            PolicyAnalysis analysis = PolicyAnalysis.builder()
+                    .user(user)
+                    .originalFileName(file.getOriginalFilename())
+                    .s3Key(null)
+                    .isOcr(extracted.isOcr())
+                    .maskedText(extracted.text())
+                    .build();
+
+            policyAnalysisRepository.save(analysis);
+            analyses.add(analysis);
+
+            log.info(
+                    "[ANALYSIS] 다중 업로드 증권 저장 | analysisId={}, fileName={}",
+                    analysis.getId(),
+                    file.getOriginalFilename()
+            );
+        }
+
+//      2. 한번에 올린 증권을 하나의 같은 채팅방에 연결
+        for (PolicyAnalysis analysis : analyses) {
+            chatSessionPolicyRepository.save(
+                    new ChatSessionPolicy(
+                            chatSessionId,
+                            analysis.getId()
+                    )
+            );
+        }
+
+//      3. 모든 증권을 등록한 후 비동기 분석
+        for (PolicyAnalysis analysis : analyses) {
+            asyncPolicyAnalysisService.analyzeAsync(
+                    analysis,
+                    chatSessionId
+            );
+        }
+
+//      4. 생성된 analysisId 목록 반환
+        return analyses.stream()
+                .map(PolicyAnalysis::getId)
+                .toList();
     }
 }

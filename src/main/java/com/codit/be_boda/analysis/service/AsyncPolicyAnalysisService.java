@@ -4,8 +4,8 @@ import com.codit.be_boda.analysis.domain.PolicyAnalysis;
 import com.codit.be_boda.analysis.domain.CoverageItem;
 import com.codit.be_boda.analysis.repository.CoverageItemRepository;
 import com.codit.be_boda.analysis.repository.PolicyAnalysisRepository;
-import com.codit.be_boda.chat.entity.ChatSessionPolicy;
 import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
+import com.codit.be_boda.dashboard.service.DashboardService;
 import com.codit.be_boda.upload.service.S3Service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,6 +34,7 @@ public class AsyncPolicyAnalysisService {
     private final S3Service s3Service;
     private final OpenAiChatModel chatModel;
     private final ObjectMapper objectMapper;
+    private final DashboardService dashboardService;
 
     @Value("${app.llm.mini-model:gpt-4o-mini}")
     private String miniModel;
@@ -51,25 +52,33 @@ public class AsyncPolicyAnalysisService {
 
         try {
             Map<String, Object> extractedData = extractPolicyInfo(analysis.getMaskedText());
-            analysis.completeAnalysis(extractedData);
-            policyAnalysisRepository.save(analysis);
+
             log.info("[ANALYSIS] 증권 기본 정보 추출 완료 | {}ms", System.currentTimeMillis() - start);
 
+//          보장 카드를 먼저 저장(모든 증권에 대해 분석 완료되기 전까지 COMPLETE로 바꾸지 않기)
             createCoverageCards(analysis);
             log.info("[ANALYSIS] 보장 카드 생성 완료 | {}ms", System.currentTimeMillis() - start);
 
+//          모든 카드의 저장이 끝난 후 분석 상태를 COMPLETE로 변경
+            analysis.completeAnalysis(extractedData);
+
+
+            policyAnalysisRepository.save(analysis);
+            log.info("[ANALYSIS] 증권 분석 전체 완료 | 총{}ms", System.currentTimeMillis() - start);
+
+//          모든 증권이 COMPLETE라면 Dashboard테이블 생성
             if (chatSessionId != null) {
-                chatSessionPolicyRepository.save(
-                        new ChatSessionPolicy(chatSessionId, analysis.getId())
+                dashboardService.createDashboardIfReady(
+                        chatSessionId,
+                        analysis.getUser().getId()
                 );
-                log.info("[ANALYSIS] 채팅방 연결 완료 | chatSessionId={} analysisId={}",
-                        chatSessionId, analysis.getId());
             }
 
+//          S3 원본파일 삭제
             s3Service.deleteFile(analysis.getS3Key());
             analysis.deleteS3Key();
             policyAnalysisRepository.save(analysis);
-            log.info("[ANALYSIS] 증권 분석 전체 완료 | 총{}ms", System.currentTimeMillis() - start);
+
 
         } catch (Exception e) {
             analysis.failAnalysis(e.getMessage());
