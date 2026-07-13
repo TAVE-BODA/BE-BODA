@@ -193,21 +193,53 @@ public class ChatService {
         return ChatMessageSourceResponse.available(messageId, sources);
     }
 
-    private String buildSourceTitle(ChatMessageSourceRepository.MessageSourceInfo source) {
-        if (source.getRiderName() != null && !source.getRiderName().isBlank()
-                && source.getClauseNo() != null && !source.getClauseNo().isBlank()) {
+    private String buildSourceTitle(
+            ChatMessageSourceRepository.MessageSourceInfo source
+    ) {
+        String riderName = source.getRiderName();
+        String clauseNo = source.getClauseNo();
+        String clauseTitle = source.getClauseTitle();
+        String sectionTitle = source.getSectionTitle();
+
+        // 특약명 + 조항 번호 + 조항 제목
+        if (riderName != null && !riderName.isBlank()
+                && clauseNo != null && !clauseNo.isBlank()) {
+
             StringBuilder title = new StringBuilder();
-            title.append(source.getRiderName())
+
+            title.append(riderName)
                     .append(" ")
-                    .append(source.getClauseNo());
-            if (source.getClauseTitle() != null && !source.getClauseTitle().isBlank()) {
-                title.append(" ").append(source.getClauseTitle());
+                    .append(clauseNo);
+
+            if (clauseTitle != null && !clauseTitle.isBlank()) {
+                title.append(" ").append(clauseTitle);
             }
+
             return title.toString();
         }
-        if (source.getSectionTitle() != null && !source.getSectionTitle().isBlank()) {
-            return source.getSectionTitle();
+
+        // 특약명은 없지만 조항 번호와 제목이 있는 경우
+        if (clauseNo != null && !clauseNo.isBlank()
+                && clauseTitle != null && !clauseTitle.isBlank()) {
+
+            return clauseNo + " " + clauseTitle;
         }
+
+        // 조항 제목만 있는 경우
+        if (clauseTitle != null && !clauseTitle.isBlank()) {
+            return clauseTitle;
+        }
+
+        // 조항 번호만 있는 경우
+        if (clauseNo != null && !clauseNo.isBlank()) {
+            return clauseNo;
+        }
+
+        // 섹션 제목 사용
+        if (sectionTitle != null && !sectionTitle.isBlank()) {
+            return sectionTitle;
+        }
+
         return "약관 근거";
     }
 

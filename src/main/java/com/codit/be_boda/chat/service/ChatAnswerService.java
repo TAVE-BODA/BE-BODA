@@ -17,6 +17,7 @@ import com.codit.be_boda.chat.service.answer.DocumentAnswerResult;
 import com.codit.be_boda.chat.service.answer.HospitalizationAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.OutpatientAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.SurgeryAnswerGenerator;
+import com.codit.be_boda.chat.service.answer.ClaimEvidenceFinder;
 import com.codit.be_boda.chat.type.QuestionType;
 import com.codit.be_boda.chat.type.TreatmentType;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class ChatAnswerService {
     private final OutpatientAnswerGenerator outpatientAnswerGenerator;
     private final DisabilityAnswerGenerator disabilityAnswerGenerator;
     private final DocumentAnswerGenerator documentAnswerGenerator;
+    private final ClaimEvidenceFinder claimEvidenceFinder;
 
     public String generateAnswer(
             ChatSession chatSession,
@@ -70,9 +72,17 @@ public class ChatAnswerService {
             ClaimAnswerResult result =
                     generateClaimAnswerResult(analysisId, request);
 
+            List<AnswerSource> sources =
+                    claimEvidenceFinder.findSources(
+                            chatSession.getTermsDocumentId(),
+                            request
+                    );
+
             return ChatAnswerResult.claim(
                     result.messageContent(),
-                    result.claimGuide()
+                    result.claimGuide(),
+                    !sources.isEmpty(),
+                    sources
             );
         }
 
