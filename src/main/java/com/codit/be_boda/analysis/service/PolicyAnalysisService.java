@@ -41,6 +41,7 @@ public class PolicyAnalysisService {
     private final S3Service s3Service;
     private final OpenAiChatModel chatModel;
     private final ObjectMapper objectMapper;
+    private final AsyncPolicyAnalysisService asyncPolicyAnalysisService;
 
     @Value("${app.llm.mini-model:gpt-4o-mini}")
     private String miniModel;
