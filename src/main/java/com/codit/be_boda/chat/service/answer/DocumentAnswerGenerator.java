@@ -19,7 +19,11 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DocumentAnswerGenerator {
 
-    private static final int EVIDENCE_LIMIT = 10;
+    // 먼저 넓게 검색한 뒤 칩3 내부에서 정확한 근거만 선택
+    private static final int SEARCH_LIMIT = 30;
+
+    // 프론트에 제공할 칩3 근거 최대 개수
+    private static final int EVIDENCE_LIMIT = 3;
 
     private final TermsChunkQueryRepository termsChunkQueryRepository;
 
@@ -43,10 +47,14 @@ public class DocumentAnswerGenerator {
                 buildRequiredDocuments(request);
 
         String messageContent =
-                buildDocumentAnswer(requiredDocuments);
+                buildDocumentAnswer(
+                        requiredDocuments
+                );
 
         DocumentGuideResponse documentGuide =
-                buildDocumentGuide(requiredDocuments);
+                buildDocumentGuide(
+                        requiredDocuments
+                );
 
         // 약관이 없는 경우 필요서류만 반환
         if (termsDocumentId == null) {
@@ -61,18 +69,24 @@ public class DocumentAnswerGenerator {
         List<String> keywords =
                 buildSearchKeywords(request);
 
-        List<TermsChunkInfo> evidenceChunks =
+        List<TermsChunkInfo> searchedChunks =
                 termsChunkQueryRepository
                         .findByTermsDocumentIdAndKeywords(
                                 termsDocumentId,
                                 keywords,
-                                EVIDENCE_LIMIT
+                                SEARCH_LIMIT
                         );
+
+        // 칩3 조건에 실제로 맞는 근거만 필터링
+        List<TermsChunkInfo> evidenceChunks =
+                filterEvidenceChunks(
+                        searchedChunks,
+                        request
+                );
 
         boolean hasSources =
                 !evidenceChunks.isEmpty();
 
-        // GET sources API에서 사용할 근거 저장 정보
         List<AnswerSource> sources =
                 evidenceChunks.stream()
                         .map(chunk ->
@@ -92,6 +106,236 @@ public class DocumentAnswerGenerator {
         );
     }
 
+    // 칩3에 관련 있는 근거만 선택
+    private List<TermsChunkInfo> filterEvidenceChunks(
+            List<TermsChunkInfo> chunks,
+            ChatMessageRequest request
+    ) {
+        if (chunks == null || chunks.isEmpty()) {
+            return List.of();
+        }
+
+        List<TermsChunkInfo> filteredChunks =
+                chunks.stream()
+                        .filter(chunk ->
+                                isRelevantDocumentChunk(
+                                        chunk,
+                                        request
+                                )
+                        )
+                        .sorted((first, second) ->
+                                Integer.compare(
+                                        calculateEvidenceScore(
+                                                second,
+                                                request
+                                        ),
+                                        calculateEvidenceScore(
+                                                first,
+                                                request
+                                        )
+                                )
+                        )
+                        .distinct()
+                        .limit(EVIDENCE_LIMIT)
+                        .toList();
+
+        if (!filteredChunks.isEmpty()) {
+            return filteredChunks;
+        }
+
+        // 치료별 서류를 찾지 못한 경우 공통 청구서류 조항 1개만 사용
+        return chunks.stream()
+                .filter(chunk ->
+                        !isExcludedDocumentChunk(chunk)
+                )
+                .filter(this::containsCommonClaimDocuments)
+                .limit(1)
+                .toList();
+    }
+
+    private boolean isRelevantDocumentChunk(
+            TermsChunkInfo chunk,
+            ChatMessageRequest request
+    ) {
+        // 상품 전체 공통 청구서류 안내는 항상 우선
+        if (isRepresentativeDocumentGuide(chunk)) {
+            return true;
+        }
+
+        // 다른 유형의 특약 청구 조항 제외
+        if (isExcludedDocumentChunk(chunk)) {
+            return false;
+        }
+
+        if (request.getTreatmentTypes() == null
+                || request.getTreatmentTypes().isEmpty()) {
+
+            return containsCommonClaimDocuments(chunk);
+        }
+
+        return request.getTreatmentTypes()
+                .stream()
+                .anyMatch(treatmentType ->
+                        matchesTreatmentDocument(
+                                chunk,
+                                treatmentType
+                        )
+                );
+    }
+
+    // 근거 우선순위 계산
+    private int calculateEvidenceScore(
+            TermsChunkInfo chunk,
+            ChatMessageRequest request
+    ) {
+        int score = 0;
+
+        if (isRepresentativeDocumentGuide(chunk)) {
+            score += 100;
+        }
+
+        if (request.getTreatmentTypes() != null) {
+            for (TreatmentType treatmentType
+                    : request.getTreatmentTypes()) {
+
+                if (matchesTreatmentDocument(
+                        chunk,
+                        treatmentType
+                )) {
+                    score += 50;
+                }
+            }
+        }
+
+        if (containsCommonClaimDocuments(chunk)) {
+            score += 20;
+        }
+
+        return score;
+    }
+
+    // 상품 전체의 사고보험금 청구서류 대표 예시
+    private boolean isRepresentativeDocumentGuide(
+            TermsChunkInfo chunk
+    ) {
+        String text =
+                buildNormalizedChunkText(chunk);
+
+        return text.contains(
+                "사고보험금청구서류대표예시"
+        );
+    }
+
+    // 칩3에서 제외해야 하는 다른 특약·청구 유형
+    private boolean isExcludedDocumentChunk(
+            TermsChunkInfo chunk
+    ) {
+        String text =
+                buildNormalizedChunkText(chunk);
+
+        return text.contains("사망보험금을청구")
+                || text.contains("지정대리청구")
+                || text.contains("지정대리청구인")
+                || text.contains("독감항바이러스")
+                || text.contains("선지급치료비")
+                || text.contains("가족관계등록부")
+                || text.contains("가족관계증명서")
+                || text.contains("보험금지급절차")
+                || text.contains("서류접수1차심사");
+    }
+
+    // 청구서와 신분증이 함께 있는 공통 청구 조항
+    private boolean containsCommonClaimDocuments(
+            TermsChunkInfo chunk
+    ) {
+        String text =
+                buildNormalizedChunkText(chunk);
+
+        return text.contains("청구서")
+                && text.contains("신분증");
+    }
+
+    // 치료 유형별 서류가 본문에 직접 포함되는지 확인
+    private boolean matchesTreatmentDocument(
+            TermsChunkInfo chunk,
+            TreatmentType treatmentType
+    ) {
+        String text =
+                buildNormalizedChunkText(chunk);
+
+        return switch (treatmentType) {
+            case DIAGNOSIS_ONLY ->
+                    text.contains("진단서")
+                            || text.contains("진단사실확인서류")
+                            || text.contains("검사결과지");
+
+            case SURGERY ->
+                    text.contains("수술확인서")
+                            || text.contains("수술증명서");
+
+            case HOSPITALIZATION ->
+                    text.contains("입퇴원확인서")
+                            || text.contains("입원치료확인서");
+
+            case OUTPATIENT ->
+                    text.contains("통원확인서");
+
+            case CAST ->
+                    text.contains("깁스")
+                            && (
+                            text.contains("증명서")
+                                    || text.contains("진료기록부")
+                    );
+
+            case DENTAL ->
+                    text.contains("치과치료확인서")
+                            || text.contains("치과진료기록")
+                            || text.contains("xray")
+                            || text.contains("구강내사진");
+
+            case DISABILITY ->
+                    text.contains("장해진단서")
+                            || text.contains("후유장해진단서");
+        };
+    }
+
+    private String buildNormalizedChunkText(
+            TermsChunkInfo chunk
+    ) {
+        if (chunk == null) {
+            return "";
+        }
+
+        return normalize(
+                safe(chunk.clauseNo())
+                        + safe(chunk.clauseTitle())
+                        + safe(chunk.sectionTitle())
+                        + safe(chunk.chunkText())
+        );
+    }
+
+    private String safe(
+            String value
+    ) {
+        return value == null ? "" : value;
+    }
+
+    private String normalize(
+            String value
+    ) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+                .toLowerCase()
+                .replaceAll("\\s+", "")
+                .replace("·", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace("-", "");
+    }
+
     // 사용자 입력 조건을 기준으로 필요한 서류 후보 목록 생성
     private List<String> buildRequiredDocuments(
             ChatMessageRequest request
@@ -104,16 +348,19 @@ public class DocumentAnswerGenerator {
 
         if (request.getIncidentType()
                 == IncidentType.INJURY) {
+
             documents.add("재해 입증서류");
         }
 
         if (request.getTreatmentTypes() == null
                 || request.getTreatmentTypes().isEmpty()) {
+
             return new ArrayList<>(documents);
         }
 
         for (TreatmentType treatmentType
                 : request.getTreatmentTypes()) {
+
             addTreatmentDocuments(
                     documents,
                     treatmentType
@@ -178,20 +425,22 @@ public class DocumentAnswerGenerator {
         keywords.add("사고증명서");
         keywords.add("청구서");
         keywords.add("신분증");
-        keywords.add("추가서류");
 
         if (request.getIncidentType()
                 == IncidentType.INJURY) {
+
             keywords.add("재해 입증서류");
         }
 
         if (request.getTreatmentTypes() == null
                 || request.getTreatmentTypes().isEmpty()) {
+
             return new ArrayList<>(keywords);
         }
 
         for (TreatmentType treatmentType
                 : request.getTreatmentTypes()) {
+
             addTreatmentKeywords(
                     keywords,
                     treatmentType
@@ -264,7 +513,6 @@ public class DocumentAnswerGenerator {
         );
     }
 
-    // 필요서류 목록을 문자열로 변환
     private String buildDocumentLines(
             List<String> requiredDocuments
     ) {
@@ -273,6 +521,7 @@ public class DocumentAnswerGenerator {
 
         for (String document
                 : requiredDocuments) {
+
             builder.append("- ")
                     .append(document)
                     .append("\n");
@@ -294,7 +543,6 @@ public class DocumentAnswerGenerator {
                 .build();
     }
 
-    // 필요서류 목록을 DocumentItem 배열로 변환
     private List<DocumentGuideResponse.DocumentItem>
     buildDocumentItems(
             List<String> requiredDocuments
@@ -316,7 +564,6 @@ public class DocumentAnswerGenerator {
                 .toList();
     }
 
-    // 필요서류별 설명 생성
     private String buildDocumentDescription(
             String document
     ) {

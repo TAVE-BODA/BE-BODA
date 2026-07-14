@@ -13,4 +13,7 @@ public class ClaimGuideResponse {
     private String summary;
     private List<String> reasons;
     private List<String> cautions;
+
+    private Boolean hasSources;
+    private List<Long> sourceChunkIds;
 }
