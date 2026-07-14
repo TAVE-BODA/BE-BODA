@@ -3,6 +3,7 @@ package com.codit.be_boda.chat.service;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
+import com.codit.be_boda.chat.dto.response.DocumentGuideResponse;
 import com.codit.be_boda.chat.entity.ChatSession;
 import com.codit.be_boda.chat.entity.ChatSessionPolicy;
 import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
@@ -24,6 +25,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.List;
 
 @Service
@@ -56,21 +59,31 @@ public class ChatAnswerService {
             ChatMessageRequest request
     ) {
         // 채팅방에 연결된 증권 ID 목록 조회
-        List<Long> analysisIds = chatSessionPolicyRepository
-                .findByChatSessionId(chatSession.getChatSessionId())
-                .stream()
-                .map(ChatSessionPolicy::getAnalysisId)
-                .toList();
+        List<Long> analysisIds =
+                chatSessionPolicyRepository
+                        .findByChatSessionId(
+                                chatSession.getChatSessionId()
+                        )
+                        .stream()
+                        .map(ChatSessionPolicy::getAnalysisId)
+                        .toList();
 
         // TODO: 다중 증권 결과 병합 필요
-        // 현재는 연결된 첫 번째 증권을 기준으로 처리
-        Long analysisId = analysisIds.isEmpty()
-                ? null
-                : analysisIds.get(0);
+        // 현재는 첫 번째 증권을 기준으로 처리
+        Long analysisId =
+                analysisIds.isEmpty()
+                        ? null
+                        : analysisIds.get(0);
 
-        if (request.getQuestionType() == QuestionType.CHIP_CLAIM) {
+        // 칩1: 청구 가능 여부
+        if (request.getQuestionType()
+                == QuestionType.CHIP_CLAIM) {
+
             ClaimAnswerResult result =
-                    generateClaimAnswerResult(analysisId, request);
+                    generateClaimAnswerResult(
+                            analysisId,
+                            request
+                    );
 
             List<AnswerSource> sources =
                     claimEvidenceFinder.findSources(
@@ -78,46 +91,88 @@ public class ChatAnswerService {
                             request
                     );
 
+            ClaimGuideResponse claimGuideWithSources =
+                    bindClaimSources(
+                            result.claimGuide(),
+                            sources
+                    );
+
             return ChatAnswerResult.claim(
                     result.messageContent(),
-                    result.claimGuide(),
+                    claimGuideWithSources,
                     !sources.isEmpty(),
                     sources
             );
         }
 
-        if (request.getQuestionType() == QuestionType.CHIP_AMOUNT) {
+        // 칩2: 예상 보험금
+        if (request.getQuestionType()
+                == QuestionType.CHIP_AMOUNT) {
+
             AmountAnswerResult result =
-                    generateAmountAnswerResult(analysisId, request);
+                    generateAmountAnswerResult(
+                            analysisId,
+                            request
+                    );
+
+            AmountSourceBindingResult bindingResult =
+                    bindAmountSources(
+                            chatSession.getTermsDocumentId(),
+                            request,
+                            result.amountGuide()
+                    );
 
             return ChatAnswerResult.amount(
                     result.messageContent(),
-                    result.amountGuide()
+                    bindingResult.amountGuide(),
+                    !bindingResult.sources().isEmpty(),
+                    bindingResult.sources()
             );
         }
 
-        if (request.getQuestionType() == QuestionType.CHIP_DOCUMENTS) {
+        // 칩3: 필요 서류
+        if (request.getQuestionType()
+                == QuestionType.CHIP_DOCUMENTS) {
+
             DocumentAnswerResult result =
-                    documentAnswerGenerator.generateStructuredAnswer(
-                            chatSession.getTermsDocumentId(),
-                            request
+                    documentAnswerGenerator
+                            .generateStructuredAnswer(
+                                    chatSession.getTermsDocumentId(),
+                                    request
+                            );
+
+            List<AnswerSource> sources =
+                    result.sources() == null
+                            ? List.of()
+                            : result.sources();
+
+            DocumentGuideResponse documentGuideWithSources =
+                    bindDocumentSources(
+                            result.documentGuide(),
+                            sources
                     );
 
             return ChatAnswerResult.documents(
                     result.messageContent(),
-                    result.documentGuide(),
-                    result.hasSources(),
-                    result.sources()
+                    documentGuideWithSources,
+                    !sources.isEmpty(),
+                    sources
             );
         }
 
-        if (request.getQuestionType() == QuestionType.CHIP_OVERVIEW) {
+        // 칩4: 보장 카드
+        if (request.getQuestionType()
+                == QuestionType.CHIP_OVERVIEW) {
+
             return ChatAnswerResult.text(
                     "가입하신 증권의 보장 항목은 보장 카드에서 확인할 수 있어요."
             );
         }
 
-        if (request.getQuestionType() == QuestionType.FREE_TEXT) {
+        // 직접 입력
+        if (request.getQuestionType()
+                == QuestionType.FREE_TEXT) {
+
             return ChatAnswerResult.text(
                     "직접 입력 질문은 이후 약관 기반 답변 기능에서 처리될 예정입니다."
             );
@@ -404,23 +459,102 @@ public class ChatAnswerService {
             Long analysisId,
             ChatMessageRequest request
     ) {
-        if (hasTreatmentType(request, TreatmentType.SURGERY)) {
-            return surgeryAnswerGenerator.generateStructuredAmountAnswer(
-                    analysisId,
-                    request
+        List<TreatmentType> treatmentTypes =
+                request.getTreatmentTypes();
+
+        if (treatmentTypes == null
+                || treatmentTypes.isEmpty()) {
+
+            String messageContent =
+                    generateAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            AmountGuideResponse amountGuide =
+                    buildAmountGuide(request);
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
             );
         }
 
-        String messageContent =
-                generateAmountAnswer(analysisId, request);
+        // 단일 치료
+        if (treatmentTypes.size() == 1) {
+            return generateSingleAmountAnswerResult(
+                    analysisId,
+                    request,
+                    treatmentTypes.get(0)
+            );
+        }
 
-        AmountGuideResponse amountGuide =
-                buildAmountGuide(request);
+        // 복수 치료
+        List<TreatmentAmountResult> results =
+                treatmentTypes.stream()
+                        .map(treatmentType ->
+                                new TreatmentAmountResult(
+                                        treatmentType,
+                                        generateSingleAmountAnswerResult(
+                                                analysisId,
+                                                request,
+                                                treatmentType
+                                        )
+                                )
+                        )
+                        .toList();
 
-        return new AmountAnswerResult(
-                messageContent,
-                amountGuide
-        );
+        return mergeAmountResults(results);
+    }
+
+    private AmountAnswerResult generateSingleAmountAnswerResult(
+            Long analysisId,
+            ChatMessageRequest request,
+            TreatmentType treatmentType
+    ) {
+        return switch (treatmentType) {
+            case CAST ->
+                    castAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            case SURGERY ->
+                    surgeryAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            case HOSPITALIZATION ->
+                    hospitalizationAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            case DENTAL ->
+                    dentalAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            case DIAGNOSIS_ONLY ->
+                    diagnosisAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            case OUTPATIENT ->
+                    outpatientAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+
+            case DISABILITY ->
+                    disabilityAnswerGenerator.generateStructuredAmountAnswer(
+                            analysisId,
+                            request
+                    );
+        };
     }
 
     // CHIP_CLAIM 문자열 응답 생성
@@ -537,6 +671,116 @@ public class ChatAnswerService {
         return "입력하신 치료 항목에 대한 예상 보험금 계산은 아직 준비 중입니다.";
     }
 
+    private AmountAnswerResult mergeAmountResults(
+            List<TreatmentAmountResult> results
+    ) {
+        StringBuilder messageContent =
+                new StringBuilder();
+
+        List<AmountGuideResponse.EstimatedItem> estimatedItems =
+                new ArrayList<>();
+
+        List<String> cautions =
+                new ArrayList<>();
+
+        boolean anyCalculationAvailable = false;
+        boolean allCalculationAvailable = true;
+
+        for (TreatmentAmountResult treatmentResult : results) {
+            String treatmentLabel =
+                    getTreatmentTypeLabel(
+                            treatmentResult.treatmentType()
+                    );
+
+            AmountAnswerResult result =
+                    treatmentResult.result();
+
+            messageContent.append("[")
+                    .append(treatmentLabel)
+                    .append("]\n")
+                    .append(result.messageContent())
+                    .append("\n\n");
+
+            AmountGuideResponse amountGuide =
+                    result.amountGuide();
+
+            if (amountGuide == null) {
+                allCalculationAvailable = false;
+                continue;
+            }
+
+            boolean calculationAvailable =
+                    Boolean.TRUE.equals(
+                            amountGuide.getCalculationAvailable()
+                    );
+
+            if (calculationAvailable) {
+                anyCalculationAvailable = true;
+            } else {
+                allCalculationAvailable = false;
+            }
+
+            if (amountGuide.getEstimatedItems() != null) {
+                for (AmountGuideResponse.EstimatedItem item
+                        : amountGuide.getEstimatedItems()) {
+
+                    String reason = item.getReason();
+
+                    estimatedItems.add(
+                            AmountGuideResponse.EstimatedItem.builder()
+                                    .coverageName(
+                                            item.getCoverageName()
+                                    )
+                                    .amountText(
+                                            item.getAmountText()
+                                    )
+                                    .reason(
+                                            reason == null
+                                                    || reason.isBlank()
+                                                    ? "[" + treatmentLabel + "] 금액 후보예요."
+                                                    : "[" + treatmentLabel + "] " + reason
+                                    )
+                                    .build()
+                    );
+                }
+            }
+
+            if (amountGuide.getCautions() != null) {
+                for (String caution
+                        : amountGuide.getCautions()) {
+
+                    if (!cautions.contains(caution)) {
+                        cautions.add(caution);
+                    }
+                }
+            }
+        }
+
+        // 일부 치료만 계산 가능한 경우
+        if (anyCalculationAvailable
+                && !allCalculationAvailable) {
+
+            cautions.add(
+                    0,
+                    "일부 치료 항목은 필요한 정보가 부족해 전체 예상 보험금을 계산하지 못했어요."
+            );
+        }
+
+        AmountGuideResponse amountGuide =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(
+                                allCalculationAvailable
+                        )
+                        .estimatedItems(estimatedItems)
+                        .cautions(cautions)
+                        .build();
+
+        return new AmountAnswerResult(
+                messageContent.toString().trim(),
+                amountGuide
+        );
+    }
+
     private boolean hasTreatmentType(
             ChatMessageRequest request,
             TreatmentType treatmentType
@@ -547,9 +791,231 @@ public class ChatAnswerService {
         );
     }
 
+    // CHIP_AMOUNT 카드별로 약관 근거 chunkId 연결
+    private AmountSourceBindingResult bindAmountSources(
+            Long termsDocumentId,
+            ChatMessageRequest request,
+            AmountGuideResponse amountGuide
+    ) {
+        if (amountGuide == null) {
+            return new AmountSourceBindingResult(
+                    null,
+                    List.of()
+            );
+        }
+
+        if (amountGuide.getEstimatedItems() == null
+                || amountGuide.getEstimatedItems().isEmpty()) {
+
+            AmountGuideResponse amountGuideWithoutSources =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(
+                                    amountGuide.getCalculationAvailable()
+                            )
+                            .estimatedItems(
+                                    amountGuide.getEstimatedItems() == null
+                                            ? List.of()
+                                            : amountGuide.getEstimatedItems()
+                            )
+                            .cautions(
+                                    amountGuide.getCautions()
+                            )
+                            .hasSources(false)
+                            .sourceChunkIds(List.of())
+                            .build();
+
+            return new AmountSourceBindingResult(
+                    amountGuideWithoutSources,
+                    List.of()
+            );
+        }
+
+        List<AmountGuideResponse.EstimatedItem> itemsWithSources =
+                new ArrayList<>();
+
+        Map<Long, AnswerSource> uniqueSources =
+                new LinkedHashMap<>();
+
+        for (AmountGuideResponse.EstimatedItem item
+                : amountGuide.getEstimatedItems()) {
+
+            List<AnswerSource> itemSources =
+                    claimEvidenceFinder
+                            .findAmountSourcesForItem(
+                                    termsDocumentId,
+                                    request,
+                                    item
+                            );
+
+            List<Long> itemSourceChunkIds =
+                    extractSourceChunkIds(
+                            itemSources
+                    );
+
+            AmountGuideResponse.EstimatedItem itemWithSources =
+                    AmountGuideResponse.EstimatedItem.builder()
+                            .coverageName(
+                                    item.getCoverageName()
+                            )
+                            .amountText(
+                                    item.getAmountText()
+                            )
+                            .reason(
+                                    item.getReason()
+                            )
+                            .hasSources(
+                                    !itemSourceChunkIds.isEmpty()
+                            )
+                            .sourceChunkIds(
+                                    itemSourceChunkIds
+                            )
+                            .build();
+
+            itemsWithSources.add(
+                    itemWithSources
+            );
+
+            for (AnswerSource source : itemSources) {
+                if (source != null
+                        && source.chunkId() != null) {
+
+                    uniqueSources.putIfAbsent(
+                            source.chunkId(),
+                            source
+                    );
+                }
+            }
+        }
+
+        List<Long> allSourceChunkIds =
+                List.copyOf(
+                        uniqueSources.keySet()
+                );
+
+        AmountGuideResponse amountGuideWithSources =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(
+                                amountGuide.getCalculationAvailable()
+                        )
+                        .estimatedItems(
+                                itemsWithSources
+                        )
+                        .cautions(
+                                amountGuide.getCautions()
+                        )
+                        .hasSources(
+                                !allSourceChunkIds.isEmpty()
+                        )
+                        .sourceChunkIds(
+                                allSourceChunkIds
+                        )
+                        .build();
+
+        return new AmountSourceBindingResult(
+                amountGuideWithSources,
+                List.copyOf(
+                        uniqueSources.values()
+                )
+        );
+    }
+
+    // CHIP_CLAIM 결과에 약관 근거 chunkId 연결
+    private ClaimGuideResponse bindClaimSources(
+            ClaimGuideResponse claimGuide,
+            List<AnswerSource> sources
+    ) {
+        if (claimGuide == null) {
+            return null;
+        }
+
+        List<Long> sourceChunkIds =
+                extractSourceChunkIds(
+                        sources
+                );
+
+        return ClaimGuideResponse.builder()
+                .claimStatus(
+                        claimGuide.getClaimStatus()
+                )
+                .summary(
+                        claimGuide.getSummary()
+                )
+                .reasons(
+                        claimGuide.getReasons()
+                )
+                .cautions(
+                        claimGuide.getCautions()
+                )
+                .hasSources(
+                        !sourceChunkIds.isEmpty()
+                )
+                .sourceChunkIds(
+                        sourceChunkIds
+                )
+                .build();
+    }
+
+    // CHIP_DOCUMENTS 결과에 약관 근거 chunkId 연결
+    private DocumentGuideResponse bindDocumentSources(
+            DocumentGuideResponse documentGuide,
+            List<AnswerSource> sources
+    ) {
+        if (documentGuide == null) {
+            return null;
+        }
+
+        List<Long> sourceChunkIds =
+                extractSourceChunkIds(
+                        sources
+                );
+
+        return DocumentGuideResponse.builder()
+                .documents(
+                        documentGuide.getDocuments()
+                )
+                .hasSources(
+                        !sourceChunkIds.isEmpty()
+                )
+                .sourceChunkIds(
+                        sourceChunkIds
+                )
+                .build();
+    }
+
+    // AnswerSource 목록에서 중복 없는 chunkId 추출
+    private List<Long> extractSourceChunkIds(
+            List<AnswerSource> sources
+    ) {
+        if (sources == null
+                || sources.isEmpty()) {
+            return List.of();
+        }
+
+        return sources.stream()
+                .filter(source ->
+                        source != null
+                                && source.chunkId() != null
+                )
+                .map(AnswerSource::chunkId)
+                .distinct()
+                .toList();
+    }
+
     private record TreatmentClaimResult(
             TreatmentType treatmentType,
             ClaimAnswerResult result
+    ) {
+    }
+
+    private record TreatmentAmountResult(
+            TreatmentType treatmentType,
+            AmountAnswerResult result
+    ) {
+    }
+
+    private record AmountSourceBindingResult(
+            AmountGuideResponse amountGuide,
+            List<AnswerSource> sources
     ) {
     }
 }

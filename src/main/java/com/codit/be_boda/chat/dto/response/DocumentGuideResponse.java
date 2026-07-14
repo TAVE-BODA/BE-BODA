@@ -10,9 +10,8 @@ import java.util.List;
 public class DocumentGuideResponse {
 
     private List<DocumentItem> documents;
-    private List<EvidenceItem> evidences;
-    private Boolean evidenceAvailable;
-    private String notice;
+    private Boolean hasSources;
+    private List<Long> sourceChunkIds;
 
     @Getter
     @Builder
@@ -20,12 +19,7 @@ public class DocumentGuideResponse {
         private String name;
         private String description;
         private Boolean required;
-    }
-
-    @Getter
-    @Builder
-    public static class EvidenceItem {
-        private Long chunkId;
-        private String title;
+        private Boolean hasSources;
+        private List<Long> sourceChunkIds;
     }
 }

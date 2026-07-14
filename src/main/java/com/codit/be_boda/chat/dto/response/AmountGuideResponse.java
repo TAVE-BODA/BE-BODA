@@ -13,11 +13,20 @@ public class AmountGuideResponse {
     private List<EstimatedItem> estimatedItems;
     private List<String> cautions;
 
+    // 결과 전체 약관 근거
+    private Boolean hasSources;
+    private List<Long> sourceChunkIds;
+
     @Getter
     @Builder
     public static class EstimatedItem {
+
         private String coverageName;
         private String amountText;
         private String reason;
+
+        // 개별 금액 카드의 약관 근거
+        private Boolean hasSources;
+        private List<Long> sourceChunkIds;
     }
 }

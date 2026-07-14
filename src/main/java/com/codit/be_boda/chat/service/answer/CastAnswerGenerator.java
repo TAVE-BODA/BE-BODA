@@ -5,6 +5,7 @@ import com.codit.be_boda.analysis.dto.CoverageItemDto;
 import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
+import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -110,34 +111,162 @@ public class CastAnswerGenerator {
     }
 
     // CHIP_AMOUNT 중 CAST 처리
-    public String generateAmountAnswer(Long analysisId, ChatMessageRequest request) {
+    public String generateAmountAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
         List<CoverageItemInfo> coverageItems =
-                coverageItemQueryRepository.findByAnalysisId(analysisId);
+                coverageItemQueryRepository.findByAnalysisId(
+                        analysisId
+                );
 
         for (CoverageItemInfo coverageItem : coverageItems) {
-            if (!"골절재해".equals(coverageItem.coverageType())) {
+            if (!"골절재해".equals(
+                    coverageItem.coverageType()
+            )) {
                 continue;
             }
 
-            CoverageLlmResponse detail = parseCoverageDetail(coverageItem.detail());
+            CoverageLlmResponse detail =
+                    parseCoverageDetail(
+                            coverageItem.detail()
+                    );
 
-            if (detail.items() == null || detail.items().isEmpty()) {
-                break;
+            if (detail.items() == null
+                    || detail.items().isEmpty()) {
+                continue;
             }
 
-            return detail.items().stream()
-                    .filter(item -> item.coverageName() != null)
-                    .filter(item -> item.coverageName().contains("깁스"))
-                    .findFirst()
-                    .map(item -> buildCastAmountAnswer(
-                            item,
-                            coverageItem.exclusionKeywords(),
-                            request
-                    ))
-                    .orElse("가입하신 증권에서 깁스 치료와 직접 매칭되는 보장 항목을 찾지 못했어요.");
+            CoverageItemDto castItem =
+                    detail.items().stream()
+                            .filter(item ->
+                                    item.coverageName() != null
+                            )
+                            .filter(item ->
+                                    item.coverageName()
+                                            .contains("깁스")
+                            )
+                            .findFirst()
+                            .orElse(null);
+
+            if (castItem != null) {
+                return buildCastAmountAnswer(
+                        castItem,
+                        coverageItem.exclusionKeywords(),
+                        request
+                );
+            }
         }
 
         return "가입하신 증권에서 골절·깁스 관련 보장 항목을 찾지 못했어요.";
+    }
+
+    // CHIP_AMOUNT 중 CAST 문자열 응답과 카드 데이터 생성
+    public AmountAnswerResult generateStructuredAmountAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        String messageContent =
+                generateAmountAnswer(analysisId, request);
+
+        CastCoverageMatch match =
+                findMatchedCastCoverage(analysisId);
+
+        CoverageItemDto castItem =
+                match == null ? null : match.item();
+
+        // 증권에서 깁스 보장을 찾지 못한 경우
+        if (castItem == null) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "가입하신 증권에서 깁스 치료와 직접 매칭되는 보장 항목을 찾지 못했어요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        // 부목은 보장 제외 조건이므로 계산 불가
+        if (isSplintCast(request)) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "입력하신 치료 방식은 반깁스 또는 부목이에요.",
+                                    "해당 깁스 치료 보장은 부목을 제외하는 조건이 있어요.",
+                                    "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        CoverageAmountDto amount = null;
+
+        if (castItem.amounts() != null
+                && !castItem.amounts().isEmpty()) {
+            amount = castItem.amounts().get(0);
+        }
+
+        // 보장은 있지만 금액이 없는 경우
+        if (amount == null || amount.coverageAmount() == null) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "깁스 치료 보장은 확인됐지만 정확한 보장금액은 약관 확인이 필요해요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        AmountGuideResponse amountGuide =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(true)
+                        .estimatedItems(List.of(
+                                AmountGuideResponse.EstimatedItem.builder()
+                                        .coverageName(
+                                                castItem.coverageName()
+                                        )
+                                        .amountText(
+                                                String.format(
+                                                        "%,d원",
+                                                        amount.coverageAmount()
+                                                )
+                                        )
+                                        .reason(
+                                                "정식 깁스 치료 시 "
+                                                        + buildCastAmountCondition(amount)
+                                                        + " 지급되는 보장금액이에요."
+                                        )
+                                        .build()
+                        ))
+                        .cautions(List.of(
+                                "부목 또는 반깁스는 보장 대상에서 제외될 수 있어요.",
+                                "동일한 원인으로 여러 번 깁스 치료를 받은 경우 1회만 지급될 수 있어요.",
+                                "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+                        ))
+                        .build();
+
+        return new AmountAnswerResult(
+                messageContent,
+                amountGuide
+        );
     }
 
     // CAST 청구 가능 여부 답변 문장 생성
@@ -317,6 +446,18 @@ public class CastAnswerGenerator {
         return "깁스 치료 시 "
                 + String.format("%,d원", amount.coverageAmount())
                 + "의 보장금액이 확인됐어요.";
+    }
+
+    private String buildCastAmountCondition(
+            CoverageAmountDto amount
+    ) {
+        if (amount.condition() == null
+                || amount.condition().isBlank()
+                || "조건없음".equals(amount.condition())) {
+            return "1회";
+        }
+
+        return amount.condition();
     }
 
     private List<String> buildCastCautions(String exclusionKeywords) {

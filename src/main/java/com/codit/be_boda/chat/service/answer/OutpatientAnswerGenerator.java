@@ -5,6 +5,7 @@ import com.codit.be_boda.analysis.dto.CoverageItemDto;
 import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
+import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -151,6 +152,73 @@ public class OutpatientAnswerGenerator {
                 
                 진료비 영수증과 세부내역서를 기준으로 약관 조건을 추가 확인해 주세요.
                 """;
+    }
+
+    // CHIP_AMOUNT 중 OUTPATIENT 문자열 응답과 카드 데이터 생성
+    public AmountAnswerResult generateStructuredAmountAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        String messageContent =
+                generateAmountAnswer(analysisId, request);
+
+        List<CoverageItemDto> matchedItems =
+                findMatchedOutpatientItems(analysisId);
+
+        if (matchedItems.isEmpty()) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "현재 증권 분석 결과에서 통원비 또는 실손 보장 항목을 확인하지 못했어요.",
+                                    "다른 증권이나 별도의 실손의료보험 가입 여부를 확인해 주세요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        List<AmountGuideResponse.EstimatedItem> estimatedItems =
+                matchedItems.stream()
+                        .map(item -> {
+                            String amountText =
+                                    buildAmountText(item);
+
+                            return AmountGuideResponse.EstimatedItem.builder()
+                                    .coverageName(
+                                            item.coverageName()
+                                    )
+                                    .amountText(
+                                            amountText.isBlank()
+                                                    ? "진료비 내역 확인 필요"
+                                                    : amountText
+                                    )
+                                    .reason(
+                                            "실제 진료비와 자기부담금, 공제금액을 확인해야 지급금액을 계산할 수 있어요."
+                                    )
+                                    .build();
+                        })
+                        .toList();
+
+        AmountGuideResponse amountGuide =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(false)
+                        .estimatedItems(estimatedItems)
+                        .cautions(List.of(
+                                "진료비 영수증과 진료비 세부내역서 확인이 필요해요.",
+                                "실손 보장은 자기부담금, 공제금액 및 통원 한도에 따라 지급금액이 달라질 수 있어요.",
+                                "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+                        ))
+                        .build();
+
+        return new AmountAnswerResult(
+                messageContent,
+                amountGuide
+        );
     }
 
     private List<CoverageItemDto> findMatchedOutpatientItems(

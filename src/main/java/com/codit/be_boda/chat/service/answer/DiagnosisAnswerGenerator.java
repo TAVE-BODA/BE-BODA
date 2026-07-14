@@ -5,6 +5,7 @@ import com.codit.be_boda.analysis.dto.CoverageItemDto;
 import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
+import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -157,6 +158,116 @@ public class DiagnosisAnswerGenerator {
                 .append("\n정확한 예상 보험금 계산을 위해서는 진단서의 병명 또는 질병코드 확인이 필요해요.");
 
         return answer.toString();
+    }
+
+    // CHIP_AMOUNT 중 DIAGNOSIS_ONLY 문자열 응답과 카드 데이터 생성
+    public AmountAnswerResult generateStructuredAmountAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        String messageContent =
+                generateAmountAnswer(analysisId, request);
+
+        String diagnosisMessage =
+                request.getMessage();
+
+        if (isBlank(diagnosisMessage)) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "예상 진단비 확인을 위해 진단서에 적힌 병명 또는 질병코드가 필요해요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        if (isAmbiguousDiagnosisMessage(diagnosisMessage)) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "정확한 예상 진단비 확인을 위해 진단명을 조금 더 구체적으로 입력해 주세요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        List<CoverageItemDto> matchedItems =
+                findMatchedDiagnosisItems(
+                        analysisId,
+                        diagnosisMessage
+                );
+
+        if (matchedItems.isEmpty()) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "현재 증권 분석 결과에서 입력하신 진단명과 매칭되는 진단비 보장 후보를 찾지 못했어요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        List<AmountGuideResponse.EstimatedItem> estimatedItems =
+                matchedItems.stream()
+                        .map(item -> {
+                            String amountText =
+                                    buildDiagnosisAmountSummary(item);
+
+                            return AmountGuideResponse.EstimatedItem.builder()
+                                    .coverageName(
+                                            item.coverageName()
+                                    )
+                                    .amountText(
+                                            amountText.isBlank()
+                                                    ? "약관 확인 필요"
+                                                    : amountText
+                                    )
+                                    .reason(
+                                            "진단서의 병명 또는 질병코드가 약관상 지급 조건과 일치하는지 확인이 필요해요."
+                                    )
+                                    .build();
+                        })
+                        .toList();
+
+        List<String> cautions =
+                new ArrayList<>(
+                        buildDiagnosisCautions(matchedItems)
+                );
+
+        cautions.add(
+                0,
+                "여러 진단비 후보를 하나의 예상 보험금으로 합산하지 않았어요."
+        );
+
+        AmountGuideResponse amountGuide =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(false)
+                        .estimatedItems(estimatedItems)
+                        .cautions(cautions)
+                        .build();
+
+        return new AmountAnswerResult(
+                messageContent,
+                amountGuide
+        );
     }
 
    // 입력된 자유 입력이 애매한지 판단

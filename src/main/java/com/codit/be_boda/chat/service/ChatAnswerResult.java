@@ -71,6 +71,23 @@ public record ChatAnswerResult(
         );
     }
 
+    // 예상 보험금 카드 + 약관 근거 답변 결과 생성
+    public static ChatAnswerResult amount(
+            String messageContent,
+            AmountGuideResponse amountGuide,
+            boolean hasSources,
+            List<AnswerSource> sources
+    ) {
+        return new ChatAnswerResult(
+                messageContent,
+                null,
+                amountGuide,
+                null,
+                hasSources,
+                sources == null ? List.of() : sources
+        );
+    }
+
     // 필요 서류 카드 답변 결과 생성
     public static ChatAnswerResult documents(
             String messageContent,

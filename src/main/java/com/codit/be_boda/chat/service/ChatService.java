@@ -196,6 +196,22 @@ public class ChatService {
     private String buildSourceTitle(
             ChatMessageSourceRepository.MessageSourceInfo source
     ) {
+        String sourceText =
+                buildCitedText(source);
+
+        String normalizedSourceText =
+                sourceText == null
+                        ? ""
+                        : sourceText
+                          .replaceAll("\\s+", "")
+                          .replace("·", "");
+
+        if (normalizedSourceText.contains(
+                "사고보험금청구서류대표예시"
+        )) {
+            return "사고보험금 청구서류 대표예시";
+        }
+
         String riderName = source.getRiderName();
         String clauseNo = source.getClauseNo();
         String clauseTitle = source.getClauseTitle();
@@ -216,6 +232,18 @@ public class ChatService {
             }
 
             return title.toString();
+        }
+
+        // 특약명과 조항 제목만 있는 경우
+        if (riderName != null && !riderName.isBlank()
+                && clauseTitle != null && !clauseTitle.isBlank()) {
+
+            return riderName + " " + clauseTitle;
+        }
+
+        // 특약명만 있는 경우
+        if (riderName != null && !riderName.isBlank()) {
+            return riderName;
         }
 
         // 특약명은 없지만 조항 번호와 제목이 있는 경우
