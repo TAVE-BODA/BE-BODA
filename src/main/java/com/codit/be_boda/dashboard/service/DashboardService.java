@@ -115,13 +115,13 @@ public class DashboardService {
     }
 
 
-    // 같은 채팅 세션에 연결된 모든 PolicyAnalysis가 COMPLETE인지 확인
+    // 같은 채팅 세션에 연결된 모든 PolicyAnalysis가 DONE인지 확인
     private boolean areAllAnalysesCompleted(
             List<PolicyAnalysis> analyses
     ) {
         return analyses.stream()
                 .allMatch(analysis ->
-                        "COMPLETE".equals(
+                        "DONE".equals(
                                 String.valueOf(
                                         analysis.getAnalysisStatus()
                                 )
@@ -257,10 +257,8 @@ public class DashboardService {
         Matcher matcher =
                 YEAR_CONDITION_PATTERN.matcher(condition);
 
-        /*
-         * "1일당", "3일 초과 1일당", "수술 1회당" 등은
-         * 가입 후 연도 조건이 아니므로 그대로 포함
-         */
+//         "1일당", "3일 초과 1일당", "수술 1회당" 등은 가입 후 연도 조건이 아니므로 그대로 포함
+
         if (!matcher.find()) {
             return true;
         }
@@ -456,33 +454,26 @@ public class DashboardService {
 //    하나의 채팅 세션에 서로 다른 피보험자의 증권이 섞이는 것도 막음
 //    PolicyAnalysis의 extractedData에서 피보험자명 추출
     private String extractInsuredName(
-        List<PolicyAnalysis> analyses
+            List<PolicyAnalysis> analyses
     ) {
-        List<String> insuredNames = analyses.stream()
-                .map(PolicyAnalysis::getExtractedData)
-                .filter(Objects::nonNull)
-                .map(extractedData -> extractedData.get("insuredName"))
-                .filter(Objects::nonNull)
-                .map(String::valueOf)
-                .filter(insuredName -> !insuredName.isBlank())
-                .distinct()
-                .toList();
-
-        if (insuredNames.isEmpty()) {
-            throw new IllegalArgumentException(
-                 "피보험자명을 찾을 수 없습니다."
+        return analyses.stream()
+            .map(PolicyAnalysis::getExtractedData)
+            .filter(Objects::nonNull)
+            .map(extractedData ->
+                    extractedData.get("insuredName")
+            )
+            .filter(Objects::nonNull)
+            .map(String::valueOf)
+            .filter(insuredName ->
+                    !insuredName.isBlank()
+            )
+            .findFirst()
+            .orElseThrow(() ->
+                    new IllegalArgumentException(
+                            "피보험자명을 찾을 수 없습니다."
+                    )
             );
-        }
-
-        if (insuredNames.size() > 1) {
-            throw new IllegalArgumentException(
-                 "서로 다른 피보험자의 증권이 포함되어 있습니다. "
-                            + "insuredNames=" + insuredNames
-            );
-        }
-
-        return insuredNames.get(0);
-}
+    }
 
 
     // 분석 완료 서비스에서 호출할 자동 생성 진입점

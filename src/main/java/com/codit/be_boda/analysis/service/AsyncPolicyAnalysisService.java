@@ -66,7 +66,7 @@ public class AsyncPolicyAnalysisService {
             policyAnalysisRepository.save(analysis);
             log.info("[ANALYSIS] 증권 분석 전체 완료 | 총{}ms", System.currentTimeMillis() - start);
 
-//          모든 증권이 COMPLETE라면 Dashboard테이블 생성
+//          모든 증권이 DONE라면 Dashboard테이블 생성
             if (chatSessionId != null) {
                 dashboardService.createDashboardIfReady(
                         chatSessionId,
