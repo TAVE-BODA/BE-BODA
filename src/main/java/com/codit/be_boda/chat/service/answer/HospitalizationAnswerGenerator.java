@@ -6,6 +6,7 @@ import com.codit.be_boda.analysis.dto.CoverageLlmResponse;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.request.HospitalizationInfoRequest;
 import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
+import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
 import com.codit.be_boda.chat.type.HospitalType;
@@ -214,6 +215,139 @@ public class HospitalizationAnswerGenerator {
                 .append("\n");
 
         return answer.toString();
+    }
+
+    // CHIP_AMOUNT 중 HOSPITALIZATION 문자열 응답과 카드 데이터 생성
+    public AmountAnswerResult generateStructuredAmountAnswer(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        String messageContent =
+                generateAmountAnswer(analysisId, request);
+
+        HospitalizationInfoRequest hospitalizationInfo =
+                request.getHospitalizationInfo();
+
+        // 입원 정보가 없는 경우
+        if (hospitalizationInfo == null) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "예상 입원비 계산을 위해 병원 종류, 병실 종류, 입원 기간 정보가 필요해요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        CoverageItemDto hospitalizationItem =
+                findMatchedHospitalizationItem(
+                        analysisId,
+                        hospitalizationInfo
+                );
+
+        // 조건과 매칭되는 입원 보장이 없는 경우
+        if (hospitalizationItem == null) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "입력하신 병원 및 병실 조건과 직접 매칭되는 입원비 보장 항목을 찾지 못했어요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        CoverageAmountDto amount =
+                getFirstAmount(hospitalizationItem);
+
+        // 보장은 있지만 금액을 확인하지 못한 경우
+        if (amount == null
+                || amount.coverageAmount() == null) {
+
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "입원비 보장은 확인됐지만 정확한 보장금액은 약관 확인이 필요해요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        int hospitalizedDays =
+                calculateHospitalizedDays(
+                        hospitalizationInfo
+                );
+
+        if (hospitalizedDays <= 0) {
+            AmountGuideResponse amountGuide =
+                    AmountGuideResponse.builder()
+                            .calculationAvailable(false)
+                            .estimatedItems(List.of())
+                            .cautions(List.of(
+                                    "예상 입원비 계산을 위해 올바른 입원 기간이 필요해요."
+                            ))
+                            .build();
+
+            return new AmountAnswerResult(
+                    messageContent,
+                    amountGuide
+            );
+        }
+
+        long totalAmount =
+                amount.coverageAmount() * hospitalizedDays;
+
+        AmountGuideResponse amountGuide =
+                AmountGuideResponse.builder()
+                        .calculationAvailable(true)
+                        .estimatedItems(List.of(
+                                AmountGuideResponse.EstimatedItem.builder()
+                                        .coverageName(
+                                                hospitalizationItem.coverageName()
+                                        )
+                                        .amountText(
+                                                String.format(
+                                                        "%,d원",
+                                                        totalAmount
+                                                )
+                                        )
+                                        .reason(
+                                                String.format(
+                                                        "1일당 %,d원 × %d일로 계산한 예상 금액이에요.",
+                                                        amount.coverageAmount(),
+                                                        hospitalizedDays
+                                                )
+                                        )
+                                        .build()
+                        ))
+                        .cautions(List.of(
+                                "실제 병원 및 병실 분류가 약관상 지급 조건과 일치해야 해요.",
+                                "입원 인정 일수와 지급 한도에 따라 실제 보험금이 달라질 수 있어요.",
+                                "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+                        ))
+                        .build();
+
+        return new AmountAnswerResult(
+                messageContent,
+                amountGuide
+        );
     }
 
     private CoverageItemDto findMatchedHospitalizationItem(

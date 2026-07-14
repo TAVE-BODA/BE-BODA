@@ -105,6 +105,253 @@ public class TermsChunkQueryRepository {
         );
     }
 
+    public List<TermsChunkInfo> findAmountByTermsDocumentIdAndConcepts(
+            Long termsDocumentId,
+            List<String> coverageConcepts,
+            List<String> conditionConcepts,
+            int limit
+    ) {
+        if (termsDocumentId == null
+                || coverageConcepts == null
+                || coverageConcepts.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> validCoverageConcepts =
+                normalizeConcepts(coverageConcepts);
+
+        List<String> validConditionConcepts =
+                normalizeConcepts(conditionConcepts);
+
+        if (validCoverageConcepts.isEmpty()) {
+            return List.of();
+        }
+
+        String coverageCondition =
+                buildConceptCondition(
+                        validCoverageConcepts.size()
+                );
+
+        String conditionCondition =
+                validConditionConcepts.isEmpty()
+                        ? ""
+                        : """
+                      AND (
+                      """ + buildConceptCondition(
+                        validConditionConcepts.size()
+                ) + """
+                      )
+                      """;
+
+        String sql = """
+            SELECT tc.chunk_id,
+                   tc.terms_document_id,
+                   tc.clause_id,
+                   cl.clause_no,
+                   cl.clause_title,
+                   tc.section_title,
+                   tc.chunk_text
+            FROM terms_chunk tc
+            LEFT JOIN terms_clause cl
+                ON tc.clause_id = cl.clause_id
+            WHERE tc.terms_document_id = ?
+
+              -- 실제 계산된 보장명에서 추출한 개념을 모두 포함
+              AND (
+            """ + coverageCondition + """
+              )
+            """ + conditionCondition + """
+
+              -- 예상 보험금 지급 근거에 해당하는 청크
+              AND (
+                    tc.chunk_text ILIKE '%지급금액%'
+                    OR tc.chunk_text ILIKE '%보험가입금액%'
+                    OR tc.chunk_text ILIKE '%지급기준%'
+                    OR tc.chunk_text ILIKE '%보험금%지급사유%'
+                    OR COALESCE(tc.section_title, '') ILIKE '%지급금액%'
+                    OR COALESCE(tc.section_title, '') ILIKE '%지급기준%'
+                    OR COALESCE(cl.clause_title, '') ILIKE '%지급금액%'
+                    OR COALESCE(cl.clause_title, '') ILIKE '%지급기준%'
+                    OR COALESCE(cl.clause_title, '') ILIKE '%보험금%지급사유%'
+              )
+
+              -- 청구서류 및 청구 방법 조항 제외
+              AND COALESCE(cl.clause_title, '')
+                    NOT ILIKE '%보험금%청구%'
+              AND COALESCE(tc.section_title, '')
+                    NOT ILIKE '%보험금%청구%'
+              AND tc.chunk_text
+                    NOT ILIKE '%청구서(회사양식)%'
+              AND tc.chunk_text
+                    NOT ILIKE '%사고보험금 청구서류%'
+              AND tc.chunk_text
+                    NOT ILIKE '%구비서류%'
+              AND tc.chunk_text
+                    NOT ILIKE '%사고증명서%'
+
+              -- 조항에 연결되지 않은 단순 목차 제외
+              AND NOT (
+                    COALESCE(tc.clause_type, '') = 'TABLE'
+                    AND tc.clause_id IS NULL
+              )
+
+              -- 선지급 치료비 특약 제외
+              AND COALESCE(cl.clause_title, '')
+                    NOT ILIKE '%선지급 치료비%'
+              AND COALESCE(tc.section_title, '')
+                    NOT ILIKE '%선지급 치료비%'
+              AND tc.chunk_text
+                    NOT ILIKE '%선지급 치료비%'
+
+            ORDER BY
+                CASE
+                    WHEN COALESCE(
+                            cl.clause_title,
+                            tc.section_title,
+                            ''
+                         ) ILIKE '%지급사유%지급금액%'
+                        THEN 1
+
+                    WHEN tc.chunk_text ILIKE '%지급금액%'
+                         AND tc.chunk_text ILIKE '%보험가입금액%'
+                        THEN 2
+
+                    WHEN COALESCE(
+                            cl.clause_title,
+                            tc.section_title,
+                            ''
+                         ) ILIKE '%보험금%지급사유%'
+                        THEN 3
+
+                    WHEN COALESCE(tc.clause_type, '')
+                            = 'PAYMENT_REASON'
+                        THEN 4
+
+                    ELSE 9
+                END,
+                tc.chunk_index ASC
+            LIMIT ?
+            """;
+
+        List<Object> params =
+                new ArrayList<>();
+
+        params.add(termsDocumentId);
+
+        addConceptParams(
+                params,
+                validCoverageConcepts
+        );
+
+        addConceptParams(
+                params,
+                validConditionConcepts
+        );
+
+        params.add(limit);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new TermsChunkInfo(
+                        rs.getLong("chunk_id"),
+                        rs.getLong("terms_document_id"),
+                        rs.getObject("clause_id") == null
+                                ? null
+                                : rs.getLong("clause_id"),
+                        rs.getString("clause_no"),
+                        rs.getString("clause_title"),
+                        rs.getString("section_title"),
+                        rs.getString("chunk_text")
+                ),
+                params.toArray()
+        );
+    }
+
+    private List<String> normalizeConcepts(
+            List<String> concepts
+    ) {
+        if (concepts == null) {
+            return List.of();
+        }
+
+        return concepts.stream()
+                .filter(concept ->
+                        concept != null
+                                && !concept.isBlank()
+                )
+                .map(this::normalizeSearchText)
+                .filter(concept -> !concept.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private String normalizeSearchText(
+            String value
+    ) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+                .replaceAll("\\s+", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace("·", "")
+                .replace("-", "");
+    }
+
+    private String buildConceptCondition(
+            int conceptCount
+    ) {
+        StringBuilder builder =
+                new StringBuilder();
+
+        for (int i = 0; i < conceptCount; i++) {
+            if (i > 0) {
+                builder.append(" AND ");
+            }
+
+            builder.append("""
+                (
+                    regexp_replace(
+                        COALESCE(tc.chunk_text, ''),
+                        '\\s+',
+                        '',
+                        'g'
+                    ) ILIKE ?
+                    OR regexp_replace(
+                        COALESCE(tc.section_title, ''),
+                        '\\s+',
+                        '',
+                        'g'
+                    ) ILIKE ?
+                    OR regexp_replace(
+                        COALESCE(cl.clause_title, ''),
+                        '\\s+',
+                        '',
+                        'g'
+                    ) ILIKE ?
+                )
+                """);
+        }
+
+        return builder.toString();
+    }
+
+    private void addConceptParams(
+            List<Object> params,
+            List<String> concepts
+    ) {
+        for (String concept : concepts) {
+            String pattern =
+                    "%" + concept + "%";
+
+            params.add(pattern);
+            params.add(pattern);
+            params.add(pattern);
+        }
+    }
+
     public record TermsChunkInfo(
             Long chunkId,
             Long termsDocumentId,

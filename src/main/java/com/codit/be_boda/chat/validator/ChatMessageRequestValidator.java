@@ -29,9 +29,20 @@ public class ChatMessageRequestValidator {
         switch (request.getQuestionType()) {
             case FREE_TEXT -> validateFreeText(request);
             case CHIP_OVERVIEW -> validateChipOverview(request);
-            case CHIP_CLAIM, CHIP_AMOUNT, CHIP_DOCUMENTS -> validateInsuranceCondition(request);
+            case CHIP_CLAIM, CHIP_AMOUNT ->
+                    validateInsuranceCondition(request);
+
+            case CHIP_DOCUMENTS ->
+                    validateChipDocuments(request);
             default -> throw invalidRequest("지원하지 않는 questionType입니다.");
         }
+    }
+
+    private void validateChipDocuments(
+            ChatMessageRequest request
+    ) {
+        // 칩3은 questionType만으로도 기본 필요서류 안내 가능
+        // 설문값이 전달되면 치료 유형별 서류를 추가로 반환
     }
 
     private void validateFreeText(ChatMessageRequest request) {
