@@ -98,9 +98,9 @@ public class DentalAnswerGenerator {
         if (matchedItems.isEmpty()) {
             ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
                     .claimStatus("NOT_AVAILABLE")
-                    .summary("입력하신 치아 치료와 매칭되는 보장 항목을 찾지 못했어요.")
+                    .summary("치아 치료와 매칭되는 보장 항목을 찾지 못했어요.")
                     .reasons(List.of(
-                            "가입하신 증권에서 선택한 치아 치료와 직접 매칭되는 보장이 확인되지 않았어요."
+                            "가입하신 증권에서 해당 치아 치료와 직접 매칭되는 보장이 확인되지 않았어요."
                     ))
                     .cautions(List.of(
                             "다른 치아 특약이나 약관에 관련 보장이 있는지 추가 확인이 필요할 수 있어요."
@@ -112,19 +112,17 @@ public class DentalAnswerGenerator {
 
         List<String> reasons = new ArrayList<>();
 
-        String selectedTreatments = String.join(
-                ", ",
-                dentalInfo.getDentalTreatmentTypes().stream()
-                        .map(this::getDentalTreatmentDescription)
-                        .toList()
-        );
-
-        reasons.add("입력하신 치아 치료 종류는 " + selectedTreatments + "예요.");
-
         for (CoverageItemDto item : matchedItems) {
+            String coverageName = item.coverageName() == null
+                    ? "치아 치료"
+                    : item.coverageName()
+                      .replace("—", " ")
+                      .replaceAll("\\s+", " ")
+                      .trim();
+
             reasons.add(
                     "가입하신 증권에서 "
-                            + item.coverageName()
+                            + coverageName
                             + " 보장이 확인돼요."
             );
 
@@ -132,22 +130,11 @@ public class DentalAnswerGenerator {
 
             if (!amountText.isBlank()) {
                 reasons.add(
-                        "확인된 보장금액은 "
+                        "보장금액은 치아 1개당 "
                                 + amountText
                                 + "이에요."
                 );
             }
-        }
-
-        if (dentalInfo.getDentalTreatmentCountType()
-                == DentalTreatmentCountType.EXACT_COUNT
-                && dentalInfo.getDentalTreatmentCount() != null) {
-
-            reasons.add(
-                    "입력하신 치료 치아 개수는 "
-                            + dentalInfo.getDentalTreatmentCount()
-                            + "개예요."
-            );
         }
 
         List<String> cautions = new ArrayList<>();
@@ -159,11 +146,15 @@ public class DentalAnswerGenerator {
 
         if (hasPeriodCondition(matchedItems)) {
             cautions.add("가입 후 경과 기간에 따라 지급금액이 달라질 수 있어요.");
-        }        cautions.add("실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요.");
+        }
+
+        cautions.add(
+                "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+        );
 
         ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
                 .claimStatus("POSSIBLE")
-                .summary("입력하신 치아 치료와 매칭되는 보장이 확인돼 청구 가능성이 있어요.")
+                .summary("치아 치료 보장의 청구 가능성이 있어요.")
                 .reasons(reasons)
                 .cautions(cautions)
                 .build();
