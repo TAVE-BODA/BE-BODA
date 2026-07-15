@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -114,11 +115,11 @@ public class AsyncTermsAnalysisService {
                 : sections;
     }
 
-    private void parseClauses(TermsDocument doc, TermsRider rider, String text) {
+    private void parseClauses(TermsDocument doc, TermsRider rider, String text,
+                               Map<Integer, String> pageTexts) {
         String[] clauseParts = text.split("(?=제\\s*\\d+(?:-\\d+)?조)");
         int chunkIndex = 0;
 
-        // 청크를 배치로 모아서 한 번에 저장 (2순위 개선사항 반영)
         List<TermsChunk> chunkBatch = new java.util.ArrayList<>();
 
         for (String part : clauseParts) {
@@ -144,6 +145,9 @@ public class AsyncTermsAnalysisService {
 
             List<String> chunks = splitToChunks(part, 800, 100);
             for (String chunkText : chunks) {
+                // 페이지 번호 추적: pageTexts에서 청크 텍스트가 포함된 페이지 찾기
+                Integer pageNumber = findPageNumber(chunkText, pageTexts);
+
                 chunkBatch.add(TermsChunk.builder()
                         .termsDocument(doc)
                         .termsRider(rider)
@@ -152,15 +156,33 @@ public class AsyncTermsAnalysisService {
                         .clauseType(clauseType)
                         .sectionTitle(clauseTitle)
                         .chunkText(chunkText)
+                        .pageNumber(pageNumber)
                         .build());
             }
         }
 
-        // 배치 저장 (DB 왕복 횟수 대폭 감소)
         if (!chunkBatch.isEmpty()) {
             termsChunkRepository.saveAll(chunkBatch);
             log.info("[TERMS] 청크 배치 저장 | 청크수={}", chunkBatch.size());
         }
+    }
+
+    //청크 텍스트가 포함된 페이지 번호를 찾음
+    //청크의 앞부분 20자를 페이지 텍스트에서 검색.
+    private Integer findPageNumber(String chunkText, Map<Integer, String> pageTexts) {
+        if (pageTexts == null || pageTexts.isEmpty()) return null;
+
+        // 청크 시작 20자를 키로 페이지 검색
+        String searchKey = chunkText.trim().length() > 20
+                ? chunkText.trim().substring(0, 20)
+                : chunkText.trim();
+
+        for (Map.Entry<Integer, String> entry : pageTexts.entrySet()) {
+            if (entry.getValue().contains(searchKey)) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     private String detectClauseType(String text) {

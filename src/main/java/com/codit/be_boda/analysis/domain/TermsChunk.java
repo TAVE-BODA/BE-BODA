@@ -41,6 +41,9 @@ public class TermsChunk {
     @Column(name = "section_title")
     private String sectionTitle;
 
+    @Column(name = "page_number")
+    private Integer pageNumber;
+
     @Column(name = "chunk_text", nullable = false, columnDefinition = "TEXT")
     private String chunkText;
 
@@ -50,13 +53,15 @@ public class TermsChunk {
     @Builder
     public TermsChunk(TermsDocument termsDocument, TermsRider termsRider,
                       TermsClause termsClause, Integer chunkIndex,
-                      String clauseType, String sectionTitle, String chunkText) {
+                      String clauseType, String sectionTitle,
+                      Integer pageNumber, String chunkText) {
         this.termsDocument = termsDocument;
         this.termsRider = termsRider;
         this.termsClause = termsClause;
         this.chunkIndex = chunkIndex;
         this.clauseType = clauseType;
         this.sectionTitle = sectionTitle;
+        this.pageNumber = pageNumber;
         this.chunkText = chunkText;
         this.createdAt = LocalDateTime.now();
     }

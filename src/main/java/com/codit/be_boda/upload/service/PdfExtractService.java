@@ -119,6 +119,31 @@ public class PdfExtractService {
     }
 
     // PDFBox추출 시작.
+    // 약관 PDF를 페이지별로 추출
+    public Map<Integer, String> extractTermsByPage(MultipartFile file) throws IOException {
+        Map<Integer, String> pageTexts = new java.util.LinkedHashMap<>();
+
+        try (var is = file.getInputStream();
+             PDDocument doc = Loader.loadPDF(new RandomAccessReadBuffer(is))) {
+
+            PDFTextStripper stripper = new PDFTextStripper();
+            int totalPages = doc.getNumberOfPages();
+            log.info("[PDF] 약관 페이지별 추출 시작 | 총페이지={}", totalPages);
+
+            for (int page = 1; page <= totalPages; page++) {
+                stripper.setStartPage(page);
+                stripper.setEndPage(page);
+                String pageText = stripper.getText(doc);
+                if (pageText != null && !pageText.isBlank()) {
+                    pageTexts.put(page, mask(pageText.trim()));
+                }
+            }
+        }
+
+        log.info("[PDF] 약관 페이지별 추출 완료 | 유효페이지={}", pageTexts.size());
+        return pageTexts;
+    }
+
     private String extractWithPdfBox(MultipartFile file) {
         try (var is = file.getInputStream();
              PDDocument doc = Loader.loadPDF(new RandomAccessReadBuffer(is))) {

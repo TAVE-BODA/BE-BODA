@@ -17,12 +17,14 @@ import com.codit.be_boda.user.repository.UserRepository;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/upload")
 @RequiredArgsConstructor
@@ -97,9 +99,18 @@ public class UploadController {
         User user = userRepository.findById(loginUser.id()).orElseThrow();
         String s3Key = s3Service.uploadFile(file, "terms/" + user.getId());
 
+        // 페이지별 텍스트 추출 (page_number 저장용)
+        Map<Integer, String> pageTexts;
+        try {
+            pageTexts = pdfExtractService.extractTermsByPage(file);
+        } catch (Exception e) {
+            log.warn("[업로드] 페이지별 추출 실패, 전체 텍스트로 대체 | {}", e.getMessage());
+            pageTexts = null;
+        }
+
         // chatSessionId 포함 시 파싱 완료 후 채팅방에 자동 연결
         TermsDocument doc = termsAnalysisService.createAndStartParsing(
-                user, file.getOriginalFilename(), s3Key, extracted.text(), chatSessionId);
+                user, file.getOriginalFilename(), s3Key, extracted.text(), pageTexts, chatSessionId);
 
         return ResponseEntity.ok(new UploadResponse(
                 "ANALYZING", doc.getId(),
