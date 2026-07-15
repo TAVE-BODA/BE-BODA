@@ -18,6 +18,7 @@ public class ChatSessionPolicy {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+//  대시보드의 pk가 됨
     @Column(name = "chat_session_id", nullable = false)
     private Long chatSessionId;
 
