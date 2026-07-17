@@ -72,9 +72,9 @@ public class HospitalizationAnswerGenerator {
             ChatMessageRequest request
     ) {
         String messageContent = generateClaimAnswer(analysisId, request);
-        HospitalizationInfoRequest hospitalizationInfo =
-                request.getHospitalizationInfo();
+        HospitalizationInfoRequest hospitalizationInfo = request.getHospitalizationInfo();
 
+        // 입원 정보가 없는 경우
         if (hospitalizationInfo == null) {
             ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
                     .claimStatus("NEEDS_REVIEW")
@@ -93,12 +93,13 @@ public class HospitalizationAnswerGenerator {
         CoverageItemDto hospitalizationItem =
                 findMatchedHospitalizationItem(analysisId, hospitalizationInfo);
 
+        // 매칭되는 입원 보장이 없는 경우
         if (hospitalizationItem == null) {
             ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
                     .claimStatus("NOT_AVAILABLE")
                     .summary("입력하신 입원 조건과 매칭되는 보장 항목을 찾지 못했어요.")
                     .reasons(List.of(
-                            "가입하신 증권에서 입력한 병원 및 병실 조건과 일치하는 입원 보장이 확인되지 않았어요."
+                            "가입하신 증권에서 병원 및 병실 조건과 일치하는 입원 보장이 확인되지 않았어요."
                     ))
                     .cautions(List.of(
                             "다른 입원 특약이나 약관 조건에 따라 추가 확인이 필요할 수 있어요."
@@ -111,30 +112,10 @@ public class HospitalizationAnswerGenerator {
         List<String> reasons = new ArrayList<>();
 
         reasons.add(
-                "가입하신 증권에서 "
+                "가입하신 증권의 "
                         + hospitalizationItem.coverageName()
-                        + " 보장이 확인돼요."
+                        + " 조건에 해당해 청구 가능성이 있어요."
         );
-
-        reasons.add(
-                "입력하신 조건은 "
-                        + getHospitalDescription(hospitalizationInfo.getHospitalType())
-                        + ", "
-                        + getRoomDescription(hospitalizationInfo.getRoomType())
-                        + "이에요."
-        );
-
-        if (hospitalizationInfo.getHospitalizedNights() != null) {
-            int hospitalizedDays = calculateHospitalizedDays(hospitalizationInfo);
-
-            reasons.add(
-                    "입력하신 입원 기간은 "
-                            + hospitalizationInfo.getHospitalizedNights()
-                            + "박 "
-                            + hospitalizedDays
-                            + "일이에요."
-            );
-        }
 
         CoverageAmountDto amount = getFirstAmount(hospitalizationItem);
 
@@ -150,7 +131,7 @@ public class HospitalizationAnswerGenerator {
 
         ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
                 .claimStatus("POSSIBLE")
-                .summary("입력하신 입원 조건은 가입한 보장과 일치해 청구 가능성이 있어요.")
+                .summary("입원비 청구 가능성이 있어요.")
                 .reasons(reasons)
                 .cautions(List.of(
                         "실제 병원 및 병실 분류가 약관상 지급 조건과 일치해야 해요.",
@@ -160,7 +141,6 @@ public class HospitalizationAnswerGenerator {
 
         return new ClaimAnswerResult(messageContent, claimGuide);
     }
-
 
     // CHIP_AMOUNT 중 HOSPITALIZATION 처리
     public String generateAmountAnswer(Long analysisId, ChatMessageRequest request) {
@@ -443,6 +423,7 @@ public class HospitalizationAnswerGenerator {
 
         return item.amounts().get(0);
     }
+
     private String getHospitalDescription(HospitalType hospitalType) {
         if (hospitalType == null) {
             return "병원 종류 미확인";
