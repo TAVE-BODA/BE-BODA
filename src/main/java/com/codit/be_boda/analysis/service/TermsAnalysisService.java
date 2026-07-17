@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Map;
 
 // 보험약관 분석 서비스
 // 1. TermsDocument 레코드 생성
@@ -29,6 +30,7 @@ public class TermsAnalysisService {
     @Transactional
     public TermsDocument createAndStartParsing(User user, String originalFileName,
                                                String s3Key, String maskedText,
+                                               Map<Integer, String> pageTexts,
                                                Long chatSessionId) {
         TermsDocument doc = TermsDocument.builder()
                 .user(user)
@@ -40,7 +42,7 @@ public class TermsAnalysisService {
         log.info("[TERMS] 약관 레코드 생성 | termsId={}", doc.getId());
 
         // 별도 클래스 호출 → Spring AOP 프록시 경유 → @Async 정상 동작
-        asyncTermsAnalysisService.parseAsync(doc, maskedText, chatSessionId);
+        asyncTermsAnalysisService.parseAsync(doc, maskedText, pageTexts, chatSessionId);
         return doc;
     }
 }

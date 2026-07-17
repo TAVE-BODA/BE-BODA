@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,14 +31,15 @@ public class AsyncTermsAnalysisService {
     private final RagService ragService;
 
     private static final Pattern CLAUSE_PATTERN =
-            Pattern.compile("(제\\s*\\d+(?:-\\d+)?조(?:의\\d+)?)\\s*[\\[【]([^\\]】]+)[\\]】]");
+            Pattern.compile("(제\\s*\\d+(?:-\\d+)?조(?:의\\d+)?)\\s*[\\(（]([^\\)）]{1,50})[\\)）]");
 
     private static final Pattern RIDER_PATTERN =
             Pattern.compile("([가-힣]+(?:특약|특칙)[가-힣A-Za-z0-9Ⅰ-Ⅹ]*L?T?)");
 
     @Async
     @Transactional
-    public void parseAsync(TermsDocument doc, String maskedText, Long chatSessionId) {
+    public void parseAsync(TermsDocument doc, String maskedText,
+                           Map<Integer, String> pageTexts, Long chatSessionId) {
         long start = System.currentTimeMillis();
         log.info("[TERMS] 약관 비동기 파싱 시작 | termsId={}", doc.getId());
         doc.startParsing();
@@ -58,7 +60,7 @@ public class AsyncTermsAnalysisService {
                 termsRiderRepository.save(rider);
 
                 // 2. 조항 파싱 → TermsClause + TermsChunk 저장
-                parseClauses(doc, rider, section.text());
+                parseClauses(doc, rider, section.text(), pageTexts);
             }
 
             // 3. RAG 임베딩 인덱싱
@@ -90,27 +92,34 @@ public class AsyncTermsAnalysisService {
     }
 
     private List<RiderSection> parseRiders(String text) {
-        String[] parts = text.split("(?=(?:제\\s*1\\s*편|제\\s*2\\s*편|제\\s*3\\s*편))");
+        // 특약명 패턴으로 분리 (실제 약관은 특약명이 줄서로 시작)
+        // 예: "\n장해진단특약 LT\n", "\n암진단특약 L10\n"
+        String[] parts = text.split("(?=\n[\uAC00-\uD7A3]+(?:특약|특칙)[\uAC00-\uD7A3A-Za-z0-9Ⅰ-Ⅹ\s]*(?:L|LT|T)?\n)");
 
         if (parts.length <= 1) {
+            // 특약 분리 안 되면 전체를 주계약으로
             return List.of(new RiderSection("주계약", text));
         }
 
-        return java.util.Arrays.stream(parts)
-                .filter(p -> p.trim().length() > 50)
-                .map(p -> {
-                    Matcher m = RIDER_PATTERN.matcher(p);
-                    String name = m.find() ? m.group(1) : "조항" + (int)(Math.random() * 100);
-                    return new RiderSection(name, p.trim());
-                })
-                .toList();
+        List<RiderSection> sections = new java.util.ArrayList<>();
+        for (String part : parts) {
+            if (part.trim().length() < 50) continue;
+            // 첫 줄을 특약명으로
+            String firstLine = part.strip().split("\n")[0].trim();
+            String name = firstLine.isBlank() ? "주계약" : firstLine;
+            sections.add(new RiderSection(name, part.trim()));
+        }
+
+        return sections.isEmpty()
+                ? List.of(new RiderSection("주계약", text))
+                : sections;
     }
 
-    private void parseClauses(TermsDocument doc, TermsRider rider, String text) {
+    private void parseClauses(TermsDocument doc, TermsRider rider, String text,
+                               Map<Integer, String> pageTexts) {
         String[] clauseParts = text.split("(?=제\\s*\\d+(?:-\\d+)?조)");
         int chunkIndex = 0;
 
-        // 청크를 배치로 모아서 한 번에 저장 (2순위 개선사항 반영)
         List<TermsChunk> chunkBatch = new java.util.ArrayList<>();
 
         for (String part : clauseParts) {
@@ -136,6 +145,9 @@ public class AsyncTermsAnalysisService {
 
             List<String> chunks = splitToChunks(part, 800, 100);
             for (String chunkText : chunks) {
+                // 페이지 번호 추적: pageTexts에서 청크 텍스트가 포함된 페이지 찾기
+                Integer pageNumber = findPageNumber(chunkText, pageTexts);
+
                 chunkBatch.add(TermsChunk.builder()
                         .termsDocument(doc)
                         .termsRider(rider)
@@ -144,15 +156,33 @@ public class AsyncTermsAnalysisService {
                         .clauseType(clauseType)
                         .sectionTitle(clauseTitle)
                         .chunkText(chunkText)
+                        .pageNumber(pageNumber)
                         .build());
             }
         }
 
-        // 배치 저장 (DB 왕복 횟수 대폭 감소)
         if (!chunkBatch.isEmpty()) {
             termsChunkRepository.saveAll(chunkBatch);
             log.info("[TERMS] 청크 배치 저장 | 청크수={}", chunkBatch.size());
         }
+    }
+
+    //청크 텍스트가 포함된 페이지 번호를 찾음
+    //청크의 앞부분 20자를 페이지 텍스트에서 검색.
+    private Integer findPageNumber(String chunkText, Map<Integer, String> pageTexts) {
+        if (pageTexts == null || pageTexts.isEmpty()) return null;
+
+        // 청크 시작 20자를 키로 페이지 검색
+        String searchKey = chunkText.trim().length() > 20
+                ? chunkText.trim().substring(0, 20)
+                : chunkText.trim();
+
+        for (Map.Entry<Integer, String> entry : pageTexts.entrySet()) {
+            if (entry.getValue().contains(searchKey)) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     private String detectClauseType(String text) {
