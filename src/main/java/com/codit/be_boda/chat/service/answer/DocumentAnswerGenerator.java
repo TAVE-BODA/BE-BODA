@@ -394,7 +394,7 @@ public class DocumentAnswerGenerator {
 
             case CAST -> {
                 documents.add(
-                        "깁스(Cast) 치료 증명서"
+                        "깁스 치료 증명서"
                 );
                 documents.add("진료기록부");
             }
@@ -483,7 +483,7 @@ public class DocumentAnswerGenerator {
                 keywords.add("깁스");
                 keywords.add("Cast");
                 keywords.add(
-                        "깁스(Cast)치료 증명서"
+                        "깁스 치료 증명서"
                 );
                 keywords.add("진료기록부");
             }
@@ -592,7 +592,7 @@ public class DocumentAnswerGenerator {
             case "통원 확인서" ->
                     "통원 치료 사실을 확인하기 위한 서류예요.";
 
-            case "깁스(Cast) 치료 증명서" ->
+            case "깁스 치료 증명서" ->
                     "깁스 치료 여부를 확인하기 위한 서류예요.";
 
             case "진료기록부" ->
