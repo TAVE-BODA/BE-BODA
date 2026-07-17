@@ -2,26 +2,31 @@ package com.codit.be_boda.rag;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 
-//RAG 파이프라인
- //약관 텍스트 → 청킹 → 임베딩 → SimpleVectorStore 저장
-//실서비스 전환 시: SimpleVectorStore → PgVectorStore 교체
+// RAG 파이프라인
+//   약관 텍스트 → 청킹 → 임베딩 → PgVectorStore(RDS pgvector) 영속 저장
+//   SimpleVectorStore(JVM 메모리) → PgVectorStore 전환 완료
+//   저장소는 VectorStore 인터페이스로만 다루므로 검색/인덱싱 호출부(챗봇 등)는 그대로 유지됨
 // 청킹 전략:
- //1. 제N조 패턴으로 조항 단위 분리
-//2. 조항이 800자 초과 시 슬라이딩 윈도우(800자, 100자 overlap)로 추가 분할
-//3. 임베딩 API 토큰 한도(8192) 초과 방지..
+//   1. 제N조 패턴으로 조항 단위 분리
+//   2. 조항이 800자 초과 시 슬라이딩 윈도우(800자, 100자 overlap)로 추가 분할
+//   3. 임베딩 API 토큰 한도(8192) 초과 방지
 @Slf4j
 @Service
 public class RagService {
 
-    private final EmbeddingModel embeddingModel;
+    // PgVectorStore 자동설정 빈이 주입됨 (구체 클래스 아닌 인터페이스 의존)
+    private final VectorStore vectorStore;
+    // hasIndex 카운트 조회용 (vector_store 테이블 직접 조회)
+    private final JdbcTemplate jdbcTemplate;
 
     @Value("${app.rag.top-k:8}")
     private int topK;
@@ -30,17 +35,13 @@ public class RagService {
     private static final int CHUNK_SIZE = 800;
     private static final int CHUNK_OVERLAP = 100;
 
-    // 약관 문서 ID → VectorStore 맵
-    private final Map<Long, SimpleVectorStore> storeMap = new HashMap<>();
-
-    public RagService(EmbeddingModel embeddingModel) {
-        this.embeddingModel = embeddingModel;
+    public RagService(VectorStore vectorStore, JdbcTemplate jdbcTemplate) {
+        this.vectorStore = vectorStore;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
-    /**
-     * 약관 텍스트 임베딩 인덱싱
-     * @param termsDocumentId 약관 문서 ID (독립 관리 키)
-     */
+    // 약관 텍스트 임베딩 인덱싱 (RDS pgvector 영속 저장)
+    // 동일 termsDocumentId 재인덱싱 시 기존 벡터 삭제 후 재적재 (멱등성)
     public void indexTerms(Long termsDocumentId, String maskedText) {
         long t = System.currentTimeMillis();
         log.info("[RAG] 인덱싱 시작 | termsId={} | 텍스트길이={}", termsDocumentId, maskedText.length());
@@ -48,25 +49,36 @@ public class RagService {
         List<Document> chunks = chunkText(maskedText, termsDocumentId);
         log.info("[RAG] 청킹 완료 | 청크수={}", chunks.size());
 
-        SimpleVectorStore store = SimpleVectorStore.builder(embeddingModel).build();
-        store.add(chunks);
-        storeMap.put(termsDocumentId, store);
+        // 멱등성: 동일 약관의 기존 벡터를 지우고 재적재 (재시도/재분석 시 중복 방지)
+        deleteByTermsDocumentId(termsDocumentId);
+
+        vectorStore.add(chunks); // 임베딩 생성 + RDS 저장을 PgVectorStore가 내부 처리
 
         log.info("[RAG] 인덱싱 완료 | {}ms", System.currentTimeMillis() - t);
     }
 
-// 유사 청크 검색.
+    // 유사 청크 검색 — 해당 약관(termsDocumentId)의 청크로만 필터링 (사용자/세션 격리)
     public List<String> search(Long termsDocumentId, String query) {
-        SimpleVectorStore store = storeMap.get(termsDocumentId);
-        if (store == null) {
-            log.warn("[RAG] 인덱스 없음 | termsId={}", termsDocumentId);
+        long t = System.currentTimeMillis();
+
+        var filter = new FilterExpressionBuilder()
+                .eq("termsDocumentId", termsDocumentId)
+                .build();
+
+        List<Document> found = vectorStore.similaritySearch(
+                SearchRequest.builder()
+                        .query(query)
+                        .topK(topK)
+                        .filterExpression(filter)
+                        .build()
+        );
+
+        if (found == null || found.isEmpty()) {
+            log.warn("[RAG] 검색 결과 없음 | termsId={}", termsDocumentId);
             return List.of();
         }
 
-        long t = System.currentTimeMillis();
-        List<String> results = store.similaritySearch(
-                SearchRequest.builder().query(query).topK(topK).build()
-        ).stream().map(Document::getText).toList();
+        List<String> results = found.stream().map(Document::getText).toList();
 
         log.info("[RAG] 검색 완료 | 결과={}개 | {}ms", results.size(), System.currentTimeMillis() - t);
         results.forEach(r -> log.debug("[RAG] 청크: {}...",
@@ -75,11 +87,31 @@ public class RagService {
         return results;
     }
 
+    // 해당 약관이 이미 인덱싱되어 있는지 (RDS vector_store 조회)
     public boolean hasIndex(Long termsDocumentId) {
-        return storeMap.containsKey(termsDocumentId);
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM vector_store WHERE metadata->>'termsDocumentId' = ?",
+                Integer.class, String.valueOf(termsDocumentId));
+        return count != null && count > 0;
     }
 
-    //청킹
+    // 약관 삭제 시 해당 약관의 벡터 인덱스 제거 (외부 호출용)
+    public void deleteIndex(Long termsDocumentId) {
+        deleteByTermsDocumentId(termsDocumentId);
+        log.info("[RAG] 벡터 인덱스 삭제 | termsId={}", termsDocumentId);
+    }
+
+    // 동일 약관 벡터 삭제 (메타데이터 필터 기반)
+    private void deleteByTermsDocumentId(Long termsDocumentId) {
+        try {
+            vectorStore.delete(
+                    new FilterExpressionBuilder().eq("termsDocumentId", termsDocumentId).build());
+        } catch (Exception e) {
+            log.warn("[RAG] 기존 벡터 삭제 스킵 | termsId={} | {}", termsDocumentId, e.getMessage());
+        }
+    }
+
+    // 청킹
     private List<Document> chunkText(String text, Long termsDocumentId) {
         List<Document> chunks = new ArrayList<>();
         String[] articles = text.split("(?=제\\s*\\d+\\s*조)");
