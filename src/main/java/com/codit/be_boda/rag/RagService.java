@@ -95,6 +95,12 @@ public class RagService {
         return count != null && count > 0;
     }
 
+    // 약관 삭제 시 해당 약관의 벡터 인덱스 제거 (외부 호출용)
+    public void deleteIndex(Long termsDocumentId) {
+        deleteByTermsDocumentId(termsDocumentId);
+        log.info("[RAG] 벡터 인덱스 삭제 | termsId={}", termsDocumentId);
+    }
+
     // 동일 약관 벡터 삭제 (메타데이터 필터 기반)
     private void deleteByTermsDocumentId(Long termsDocumentId) {
         try {
