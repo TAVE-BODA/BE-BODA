@@ -37,8 +37,11 @@ dependencies {
     // Spring AI - OpenAI (ChatModel + EmbeddingModel)
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
-    // Spring AI - Vector Store (SimpleVectorStore, SearchRequest)
+    // Spring AI - Vector Store 코어 (VectorStore, SearchRequest, Document, Filter)
     implementation 'org.springframework.ai:spring-ai-vector-store:1.0.0'
+
+    // Spring AI - PgVector Store 스타터 (RDS pgvector 영속 저장, PgVectorStore 자동설정)
+    implementation 'org.springframework.ai:spring-ai-starter-vector-store-pgvector'
 
     // PDFBox 3.x
     implementation 'org.apache.pdfbox:pdfbox:3.0.2'

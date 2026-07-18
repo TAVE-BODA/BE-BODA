@@ -152,11 +152,59 @@ public class UploadController {
             return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
 
         TermsDocument doc = termsDocumentRepository.findById(termsDocumentId).orElse(null);
-        if (doc == null || !doc.getUser().getId().equals(loginUser.id()))
+        // 삭제된(soft delete) 약관은 없는 것으로 처리
+        if (doc == null || !doc.getUser().getId().equals(loginUser.id()) || doc.isDeleted())
             return ResponseEntity.notFound().build();
 
         return ResponseEntity.ok(new AnalysisStatusResponse(
                 null, null, doc.getId(), doc.getParsingStatus(), false));
+    }
+
+
+    // 증권 삭제
+    @Operation(summary = "보험증권 삭제",
+            description = "증권 분석 결과와 연결된 보장카드, 채팅방-증권 연결, S3 원본을 함께 삭제합니다.")
+    @DeleteMapping("/policy/{analysisId}")
+    public ResponseEntity<Object> deletePolicy(
+            @PathVariable Long analysisId,
+            HttpSession session) {
+
+        LoginUser loginUser = getLoginUser(session);
+        if (loginUser == null)
+            return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
+
+        try {
+            policyAnalysisService.deletePolicy(analysisId, loginUser.id());
+            return ResponseEntity.ok(Map.of("message", "증권을 삭제했어요."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+
+    // 약관 삭제 (soft delete: 문서/특약/조항/청크 보존, 벡터 인덱스·세션 링크·S3만 정리)
+    @Operation(summary = "보험약관 삭제",
+            description = "약관을 삭제 처리합니다. 과거 채팅 근거 보존을 위해 파싱 결과(특약/조항/청크)는 유지하고, "
+                    + "벡터 인덱스·채팅방 연결·S3 원본만 정리합니다.")
+    @DeleteMapping("/terms/{termsDocumentId}")
+    public ResponseEntity<Object> deleteTerms(
+            @PathVariable Long termsDocumentId,
+            HttpSession session) {
+
+        LoginUser loginUser = getLoginUser(session);
+        if (loginUser == null)
+            return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
+
+        try {
+            termsAnalysisService.deleteTerms(termsDocumentId, loginUser.id());
+            return ResponseEntity.ok(Map.of("message", "약관을 삭제했어요."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (SecurityException e) {
+            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+        }
     }
 
     private LoginUser getLoginUser(HttpSession session) {

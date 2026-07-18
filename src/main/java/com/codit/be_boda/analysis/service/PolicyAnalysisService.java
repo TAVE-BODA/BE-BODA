@@ -9,23 +9,17 @@ import com.codit.be_boda.analysis.repository.PolicyAnalysisRepository;
 import com.codit.be_boda.upload.service.PdfExtractService;
 import com.codit.be_boda.upload.service.S3Service;
 import com.codit.be_boda.user.domain.User;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.codit.be_boda.dashboard.service.DashboardService;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 // 보험증권 분석 서비스
 // 1. PolicyAnalysis 레코드 생성 (PENDING)
@@ -148,5 +142,28 @@ public class PolicyAnalysisService {
         return analyses.stream()
                 .map(PolicyAnalysis::getId)
                 .toList();
+    }
+
+    // 삭제 순서(FK 역방향): 보장카드 -> 채팅방-증권 연결 -> S3 원본 -> 증권 분석
+    @Transactional
+    public void deletePolicy(Long analysisId, Long userId) {
+        PolicyAnalysis analysis = policyAnalysisRepository.findById(analysisId)
+                .orElseThrow(() -> new IllegalArgumentException("증권을 찾을 수 없어요."));
+
+        if (!analysis.getUser().getId().equals(userId)) {
+            throw new SecurityException("본인의 증권만 삭제할 수 있어요.");
+        }
+
+        // coverage_item (보장카드)
+        List<CoverageItem> items =
+                coverageItemRepository.findByPolicyAnalysisOrderByCoverageType(analysis);
+        coverageItemRepository.deleteAll(items);
+
+        // chat_session_policy 연결 해제 (analysisId 기준 dangling 방지)
+        chatSessionPolicyRepository.deleteByAnalysisId(analysisId);
+        s3Service.deleteFile(analysis.getS3Key());
+        policyAnalysisRepository.delete(analysis);
+
+        log.info("[ANALYSIS] 증권 삭제 완료 | analysisId={} | 보장카드 {}건", analysisId, items.size());
     }
 }
