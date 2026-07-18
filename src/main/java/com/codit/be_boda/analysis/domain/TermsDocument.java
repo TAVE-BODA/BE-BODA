@@ -25,6 +25,9 @@ public class TermsDocument {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(name = "analysis_id")
+    private Long analysisId;
+
     @Column(name = "original_file_name")
     private String originalFileName;
 
@@ -49,15 +52,10 @@ public class TermsDocument {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
-    // soft delete 시각. null이면 미삭제.
-    // 물리 삭제 시 chat_message_source FK(chunk_id) 및 과거 근거 JOIN이 깨지므로,
-    // 문서/특약/조항/청크는 보존하고 이 필드로만 삭제 처리한다.
-    @Column(name = "deleted_at")
-    private LocalDateTime deletedAt;
-
     @Builder
-    public TermsDocument(User user, String originalFileName, String s3Key) {
+    public TermsDocument(User user, Long analysisId, String originalFileName, String s3Key) {
         this.user = user;
+        this.analysisId = analysisId;
         this.originalFileName = originalFileName;
         this.s3Key = s3Key;
         this.parsingStatus = "PENDING";
@@ -82,14 +80,5 @@ public class TermsDocument {
 
     public void deleteS3Key() {
         this.s3Key = null;
-    }
-
-    // soft delete 처리 (문서/특약/조항/청크 행은 보존)
-    public void softDelete() {
-        this.deletedAt = LocalDateTime.now();
-    }
-
-    public boolean isDeleted() {
-        return this.deletedAt != null;
     }
 }
