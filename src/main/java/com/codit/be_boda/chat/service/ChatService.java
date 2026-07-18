@@ -217,15 +217,15 @@ public class ChatService {
             ChatMessageSourceRepository.MessageSourceInfo source,
             QuestionType questionType
     ) {
-        if (questionType == QuestionType.FREE_TEXT) {
-            String contentTitle =
-                    extractSourceTitleFromText(
-                            buildCitedText(source)
-                    );
+        // 모든 질문 유형에서 실제 근거 본문의 조항명을 가장 먼저 사용
+        String contentTitle =
+                extractSourceTitleFromText(
+                        buildCitedText(source)
+                );
 
-            if (contentTitle != null) {
-                return contentTitle;
-            }
+        if (contentTitle != null
+                && !contentTitle.isBlank()) {
+            return contentTitle;
         }
 
         return buildMetadataSourceTitle(source);
@@ -299,7 +299,44 @@ public class ChatService {
             return sectionTitle;
         }
 
-        return "약관 근거";
+        String textTitle =
+                buildTextFallbackTitle(
+                        buildCitedText(source)
+                );
+
+        if (textTitle != null) {
+            return textTitle;
+        }
+
+        return "보험약관 조항";
+    }
+
+    private String buildTextFallbackTitle(String citedText) {
+        if (citedText == null || citedText.isBlank()) {
+            return null;
+        }
+
+        String[] lines =
+                citedText.split("\\R");
+
+        for (String line : lines) {
+            String normalizedLine =
+                    line.replaceAll("\\s+", " ")
+                            .trim();
+
+            if (normalizedLine.isBlank()) {
+                continue;
+            }
+
+            if (normalizedLine.length() <= 80) {
+                return normalizedLine;
+            }
+
+            return normalizedLine.substring(0, 80)
+                    + "...";
+        }
+
+        return null;
     }
 
     private String buildCitedText(ChatMessageSourceRepository.MessageSourceInfo source) {

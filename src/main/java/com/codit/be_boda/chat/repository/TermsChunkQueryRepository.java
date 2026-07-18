@@ -105,6 +105,176 @@ public class TermsChunkQueryRepository {
         );
     }
 
+    /**
+     * CHIP_CLAIM 전용 근거 검색.
+     * 지급사유·정의·제외 조항을 우선하고,
+     * 청구서류·목차·선지급 특약 청크는 제외한다.
+     */
+    public List<TermsChunkInfo> findClaimByTermsDocumentIdAndKeywords(
+            Long termsDocumentId,
+            List<String> keywords,
+            int limit
+    ) {
+        if (termsDocumentId == null
+                || keywords == null
+                || keywords.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> validKeywords = keywords.stream()
+                .filter(keyword ->
+                        keyword != null
+                                && !keyword.isBlank()
+                )
+                .distinct()
+                .toList();
+
+        if (validKeywords.isEmpty()) {
+            return List.of();
+        }
+
+        StringBuilder keywordCondition =
+                new StringBuilder();
+
+        for (int index = 0;
+             index < validKeywords.size();
+             index++) {
+
+            if (index > 0) {
+                keywordCondition.append(" OR ");
+            }
+
+            keywordCondition.append("""
+                    (
+                        tc.chunk_text ILIKE ?
+                        OR COALESCE(tc.section_title, '') ILIKE ?
+                        OR COALESCE(cl.clause_title, '') ILIKE ?
+                    )
+                    """);
+        }
+
+        String sql = """
+                SELECT tc.chunk_id,
+                       tc.terms_document_id,
+                       tc.clause_id,
+                       cl.clause_no,
+                       cl.clause_title,
+                       tc.section_title,
+                       tc.chunk_text
+                FROM terms_chunk tc
+                LEFT JOIN terms_clause cl
+                    ON tc.clause_id = cl.clause_id
+                WHERE tc.terms_document_id = ?
+                  AND (
+                """ + keywordCondition + """
+                  )
+
+                  -- 청구 가능 여부의 판단 근거만 허용
+                  AND (
+                        tc.chunk_text ILIKE '%지급사유%'
+                        OR tc.chunk_text ILIKE '%지급금액%'
+                        OR tc.chunk_text ILIKE '%지급하지 않%'
+                        OR tc.chunk_text ILIKE '%제외%'
+                        OR tc.chunk_text ILIKE '%정의%'
+                        OR COALESCE(cl.clause_title, '') ILIKE '%지급사유%'
+                        OR COALESCE(cl.clause_title, '') ILIKE '%지급하지 않%'
+                        OR COALESCE(cl.clause_title, '') ILIKE '%정의%'
+                        OR COALESCE(tc.section_title, '') ILIKE '%지급사유%'
+                        OR COALESCE(tc.section_title, '') ILIKE '%정의%'
+                        OR COALESCE(tc.clause_type, '') IN (
+                            'PAYMENT_REASON',
+                            'EXCLUSION',
+                            'DEFINITION',
+                            'DETAIL_RULE',
+                            'PERIOD'
+                        )
+                  )
+
+                  -- CHIP_DOCUMENTS 전용 청크 제외
+                  AND tc.chunk_text NOT ILIKE '%사고보험금 청구서류%'
+                  AND tc.chunk_text NOT ILIKE '%청구서(회사양식)%'
+                  AND tc.chunk_text NOT ILIKE '%구비서류%'
+                  AND tc.chunk_text NOT ILIKE '%사고증명서%'
+                  AND COALESCE(cl.clause_title, '')
+                        NOT ILIKE '%보험금%청구%'
+                  AND COALESCE(tc.section_title, '')
+                        NOT ILIKE '%보험금%청구%'
+
+                  -- 공통 안내·목차·선지급 특약 제외
+                  AND tc.chunk_text NOT ILIKE '%선지급 치료비%'
+                  AND tc.chunk_text NOT ILIKE '%보험계약의 일반사항%'
+                  AND tc.chunk_text NOT ILIKE '%해약환급금%'
+                  AND NOT (
+                        COALESCE(tc.clause_type, '') = 'TABLE'
+                        AND tc.clause_id IS NULL
+                  )
+
+                ORDER BY
+                    CASE
+                        WHEN COALESCE(
+                                cl.clause_title,
+                                tc.section_title,
+                                ''
+                             ) ILIKE '%보험금%지급사유%'
+                            THEN 1
+
+                        WHEN tc.chunk_text ILIKE '%지급사유%'
+                             AND tc.chunk_text ILIKE '%지급금액%'
+                            THEN 2
+
+                        WHEN COALESCE(tc.clause_type, '') = 'PAYMENT_REASON'
+                            THEN 3
+
+                        WHEN COALESCE(
+                                cl.clause_title,
+                                tc.section_title,
+                                ''
+                             ) ILIKE '%정의%'
+                            THEN 4
+
+                        WHEN tc.chunk_text ILIKE '%지급하지 않%'
+                             OR tc.chunk_text ILIKE '%제외%'
+                            THEN 5
+
+                        ELSE 9
+                    END,
+                    tc.chunk_index ASC
+                LIMIT ?
+                """;
+
+        List<Object> params =
+                new ArrayList<>();
+
+        params.add(termsDocumentId);
+
+        for (String keyword : validKeywords) {
+            String pattern =
+                    "%" + keyword + "%";
+
+            params.add(pattern);
+            params.add(pattern);
+            params.add(pattern);
+        }
+
+        params.add(limit);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new TermsChunkInfo(
+                        rs.getLong("chunk_id"),
+                        rs.getLong("terms_document_id"),
+                        rs.getObject("clause_id") == null
+                                ? null
+                                : rs.getLong("clause_id"),
+                        rs.getString("clause_no"),
+                        rs.getString("clause_title"),
+                        rs.getString("section_title"),
+                        rs.getString("chunk_text")
+                ),
+                params.toArray()
+        );
+    }
+
     public List<TermsChunkInfo> findAmountByTermsDocumentIdAndConcepts(
             Long termsDocumentId,
             List<String> coverageConcepts,

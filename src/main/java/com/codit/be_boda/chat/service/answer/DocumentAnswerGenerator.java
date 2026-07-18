@@ -11,8 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Component
@@ -23,7 +25,7 @@ public class DocumentAnswerGenerator {
     private static final int SEARCH_LIMIT = 30;
 
     // 프론트에 제공할 칩3 근거 최대 개수
-    private static final int EVIDENCE_LIMIT = 3;
+    private static final int EVIDENCE_LIMIT = 2;
 
     private final TermsChunkQueryRepository termsChunkQueryRepository;
 
@@ -115,7 +117,7 @@ public class DocumentAnswerGenerator {
             return List.of();
         }
 
-        List<TermsChunkInfo> filteredChunks =
+        List<TermsChunkInfo> sortedChunks =
                 chunks.stream()
                         .filter(chunk ->
                                 isRelevantDocumentChunk(
@@ -135,9 +137,13 @@ public class DocumentAnswerGenerator {
                                         )
                                 )
                         )
-                        .distinct()
-                        .limit(EVIDENCE_LIMIT)
                         .toList();
+
+        List<TermsChunkInfo> filteredChunks =
+                deduplicateByClause(
+                        sortedChunks,
+                        EVIDENCE_LIMIT
+                );
 
         if (!filteredChunks.isEmpty()) {
             return filteredChunks;
@@ -149,8 +155,61 @@ public class DocumentAnswerGenerator {
                         !isExcludedDocumentChunk(chunk)
                 )
                 .filter(this::containsCommonClaimDocuments)
-                .limit(1)
+                .findFirst()
+                .map(List::of)
+                .orElseGet(List::of);
+    }
+
+    // 하나의 조항이 여러 청크로 나뉘 경우 제거
+    private List<TermsChunkInfo> deduplicateByClause(
+            List<TermsChunkInfo> chunks,
+            int limit
+    ) {
+        Map<String, TermsChunkInfo> uniqueChunks =
+                new LinkedHashMap<>();
+
+        for (TermsChunkInfo chunk : chunks) {
+            if (chunk == null || chunk.chunkId() == null) {
+                continue;
+            }
+
+            uniqueChunks.putIfAbsent(
+                    buildClauseKey(chunk),
+                    chunk
+            );
+        }
+
+        return uniqueChunks.values()
+                .stream()
+                .limit(limit)
                 .toList();
+    }
+
+    private String buildClauseKey(
+            TermsChunkInfo chunk
+    ) {
+        if (chunk.clauseId() != null) {
+            return "CLAUSE_ID:"
+                    + chunk.clauseId();
+        }
+
+        String clauseKey = normalize(
+                safe(chunk.clauseNo())
+                        + safe(chunk.clauseTitle())
+        );
+
+        if (!clauseKey.isBlank()) {
+            return "CLAUSE:" + clauseKey;
+        }
+
+        String sectionKey =
+                normalize(chunk.sectionTitle());
+
+        if (!sectionKey.isBlank()) {
+            return "SECTION:" + sectionKey;
+        }
+
+        return "CHUNK_ID:" + chunk.chunkId();
     }
 
     private boolean isRelevantDocumentChunk(
@@ -190,11 +249,18 @@ public class DocumentAnswerGenerator {
     ) {
         int score = 0;
 
-        if (isRepresentativeDocumentGuide(chunk)) {
-            score += 100;
+        boolean representativeGuide =
+                isRepresentativeDocumentGuide(chunk);
+
+        if (representativeGuide) {
+            // 치료별 조항을 찾지 못했을 때 사용할 공통 근거
+            score += 30;
         }
 
-        if (request.getTreatmentTypes() != null) {
+        // 대표 예시 표는 모든 치료명을 포함하므로
+        // 치료별 특약 조항과 동일한 가중치를 주지 않는다.
+        if (!representativeGuide
+                && request.getTreatmentTypes() != null) {
             for (TreatmentType treatmentType
                     : request.getTreatmentTypes()) {
 
@@ -202,7 +268,7 @@ public class DocumentAnswerGenerator {
                         chunk,
                         treatmentType
                 )) {
-                    score += 50;
+                    score += 100;
                 }
             }
         }
