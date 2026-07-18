@@ -3,17 +3,22 @@ package com.codit.be_boda.mypage.dto;
 import com.codit.be_boda.user.domain.User;
 
 import java.time.LocalDate;
+import java.util.List;
 
 public record MypageResponse(
-        String nickname,
-        LocalDate firstLoginDate
+        String userName,
+        LocalDate firstLoginDate,
+        List<MypageInsuranceResponse> insurances
 ) {
 
-    public static MypageResponse from(User user) {
+    public static MypageResponse of(
+            User user,
+            List<MypageInsuranceResponse> insurances
+    ) {
         return new MypageResponse(
                 user.getNickname(),
-                user.getCreatedAt().toLocalDate()
-//              최초 로그인한 년월일만 반환
+                user.getCreatedAt().toLocalDate(),
+                insurances
         );
     }
 }
