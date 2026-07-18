@@ -30,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.StringJoiner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +41,17 @@ public class ChatService {
     private static final String DEFAULT_SESSION_TITLE = "보험 상담 세션";
     private static final String DEFAULT_DISCLAIMER =
             "실제 보험금 지급 여부는 보험사 심사 결과 및 약관에 따라 달라질 수 있습니다.";
+
+    private static final Pattern CLAUSE_HEADING_PATTERN =
+            Pattern.compile(
+                    "(제\\s*\\d+(?:-\\d+)?조(?:의\\d+)?"
+                            + "\\s*(?:\\[[^\\]\\r\\n]{1,100}]|\\([^\\)\\r\\n]{1,100}\\))?)"
+            );
+
+    private static final Pattern APPENDIX_HEADING_PATTERN =
+            Pattern.compile(
+                    "(별표\\s*\\d+\\s*(?:\\([^\\)\\r\\n]{1,100}\\)|[^\\r\\n]{0,50}분류표))"
+            );
 
     private final ChatSessionRepository chatSessionRepository;
     private final ChatSessionPolicyRepository chatSessionPolicyRepository;
@@ -92,12 +105,15 @@ public class ChatService {
         chatMessageRequestValidator.validate(request);
 
         ChatSession chatSession = findChatSession(chatSessionId);
-        QuestionType questionType = request.getQuestionType();
-
+        QuestionType questionType = resolveQuestionType(request);
         // 첫 번째 질문이면 설문 데이터로 system_prompt 조립 후 저장
         // 이후 질문부터는 저장된 system_prompt 재사용 (설문 미전송)
-        if (chatSession.isFirstMessage()) {
-            String systemPrompt = buildSystemPrompt(request);
+        if (chatSession.isFirstMessage()
+                && questionType != QuestionType.FREE_TEXT) {
+
+            String systemPrompt =
+                    buildSystemPrompt(request);
+
             chatSession.saveSystemPrompt(systemPrompt);
             chatSessionRepository.save(chatSession);
         }
@@ -122,7 +138,7 @@ public class ChatService {
                 SenderType.AI,
                 questionType,
                 aiAnswer.messageContent(),
-                false,
+                aiAnswer.hasSources(),
                 DEFAULT_DISCLAIMER
         );
 
@@ -183,8 +199,12 @@ public class ChatService {
                 .map(source -> ChatMessageSourceResponse.SourceItem.builder()
                         .sourceId(source.getSourceId())
                         .chunkId(source.getChunkId())
-                        .title(buildSourceTitle(source))
-                        .citedText(buildCitedText(source))
+                        .title(
+                                buildSourceTitle(
+                                        source,
+                                        chatMessage.getQuestionType()
+                                )
+                        )                        .citedText(buildCitedText(source))
                         .clauseType(source.getClauseType())
                         .relevanceScore(source.getRelevanceScore())
                         .build())
@@ -194,30 +214,57 @@ public class ChatService {
     }
 
     private String buildSourceTitle(
-            ChatMessageSourceRepository.MessageSourceInfo source
+            ChatMessageSourceRepository.MessageSourceInfo source,
+            QuestionType questionType
     ) {
-        String sourceText =
-                buildCitedText(source);
+        if (questionType == QuestionType.FREE_TEXT) {
+            String contentTitle =
+                    extractSourceTitleFromText(
+                            buildCitedText(source)
+                    );
 
-        String normalizedSourceText =
-                sourceText == null
-                        ? ""
-                        : sourceText
-                          .replaceAll("\\s+", "")
-                          .replace("·", "");
-
-        if (normalizedSourceText.contains(
-                "사고보험금청구서류대표예시"
-        )) {
-            return "사고보험금 청구서류 대표예시";
+            if (contentTitle != null) {
+                return contentTitle;
+            }
         }
 
+        return buildMetadataSourceTitle(source);
+    }
+
+    private String extractSourceTitleFromText(String citedText) {
+        if (citedText == null || citedText.isBlank()) {
+            return null;
+        }
+
+        Matcher clauseMatcher =
+                CLAUSE_HEADING_PATTERN.matcher(citedText);
+
+        if (clauseMatcher.find()) {
+            return clauseMatcher.group(1)
+                    .replaceAll("\\s+", " ")
+                    .trim();
+        }
+
+        Matcher appendixMatcher =
+                APPENDIX_HEADING_PATTERN.matcher(citedText);
+
+        if (appendixMatcher.find()) {
+            return appendixMatcher.group(1)
+                    .replaceAll("\\s+", " ")
+                    .trim();
+        }
+
+        return null;
+    }
+
+    private String buildMetadataSourceTitle(
+            ChatMessageSourceRepository.MessageSourceInfo source
+    ) {
         String riderName = source.getRiderName();
         String clauseNo = source.getClauseNo();
         String clauseTitle = source.getClauseTitle();
         String sectionTitle = source.getSectionTitle();
 
-        // 특약명 + 조항 번호 + 조항 제목
         if (riderName != null && !riderName.isBlank()
                 && clauseNo != null && !clauseNo.isBlank()) {
 
@@ -234,36 +281,20 @@ public class ChatService {
             return title.toString();
         }
 
-        // 특약명과 조항 제목만 있는 경우
-        if (riderName != null && !riderName.isBlank()
-                && clauseTitle != null && !clauseTitle.isBlank()) {
-
-            return riderName + " " + clauseTitle;
-        }
-
-        // 특약명만 있는 경우
-        if (riderName != null && !riderName.isBlank()) {
-            return riderName;
-        }
-
-        // 특약명은 없지만 조항 번호와 제목이 있는 경우
         if (clauseNo != null && !clauseNo.isBlank()
                 && clauseTitle != null && !clauseTitle.isBlank()) {
 
             return clauseNo + " " + clauseTitle;
         }
 
-        // 조항 제목만 있는 경우
         if (clauseTitle != null && !clauseTitle.isBlank()) {
             return clauseTitle;
         }
 
-        // 조항 번호만 있는 경우
         if (clauseNo != null && !clauseNo.isBlank()) {
             return clauseNo;
         }
 
-        // 섹션 제목 사용
         if (sectionTitle != null && !sectionTitle.isBlank()) {
             return sectionTitle;
         }
@@ -448,6 +479,21 @@ public class ChatService {
             case CHIP_OVERVIEW  -> "내 보험의 보장 항목부터 보고싶어요";
             case FREE_TEXT      -> "직접 입력할게요";
         };
+    }
+
+    private QuestionType resolveQuestionType(
+            ChatMessageRequest request
+    ) {
+        if (request.getQuestionType() != null) {
+            return request.getQuestionType();
+        }
+
+        if (request.getMessage() != null
+                && !request.getMessage().isBlank()) {
+            return QuestionType.FREE_TEXT;
+        }
+
+        return null;
     }
 
     private String joinTreatmentTypes(List<TreatmentType> treatmentTypes) {

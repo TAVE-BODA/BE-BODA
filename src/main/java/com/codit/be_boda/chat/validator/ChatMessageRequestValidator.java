@@ -22,19 +22,32 @@ public class ChatMessageRequestValidator {
             throw invalidRequest("요청 본문은 필수입니다.");
         }
 
-        if (request.getQuestionType() == null) {
-            throw invalidRequest("questionType은 필수입니다.");
+        QuestionType questionType =
+                resolveQuestionType(request);
+
+        if (questionType == null) {
+            throw invalidRequest(
+                    "questionType 또는 직접 입력할 message가 필요합니다."
+            );
         }
 
-        switch (request.getQuestionType()) {
-            case FREE_TEXT -> validateFreeText(request);
-            case CHIP_OVERVIEW -> validateChipOverview(request);
+        switch (questionType) {
+            case FREE_TEXT ->
+                    validateFreeText(request);
+
+            case CHIP_OVERVIEW ->
+                    validateChipOverview(request);
+
             case CHIP_CLAIM, CHIP_AMOUNT ->
                     validateInsuranceCondition(request);
 
             case CHIP_DOCUMENTS ->
                     validateChipDocuments(request);
-            default -> throw invalidRequest("지원하지 않는 questionType입니다.");
+
+            default ->
+                    throw invalidRequest(
+                            "지원하지 않는 questionType입니다."
+                    );
         }
     }
 
@@ -181,6 +194,20 @@ public class ChatMessageRequestValidator {
                 throw invalidRequest("treatmentStartMonth는 1부터 12 사이여야 합니다.");
             }
         }
+    }
+
+    private QuestionType resolveQuestionType(
+            ChatMessageRequest request
+    ) {
+        if (request.getQuestionType() != null) {
+            return request.getQuestionType();
+        }
+
+        if (!isBlank(request.getMessage())) {
+            return QuestionType.FREE_TEXT;
+        }
+
+        return null;
     }
 
     private BusinessException invalidRequest(String message) {
