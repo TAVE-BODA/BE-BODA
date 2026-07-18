@@ -19,8 +19,10 @@ public record ChatAnswerResult(
         boolean hasSources,
         List<AnswerSource> sources
 ) {
-    // 카드 DTO 없는 기본 답변 결과 생성
-    public static ChatAnswerResult text(String messageContent) {
+    // 근거 없는 일반 텍스트 답변
+    public static ChatAnswerResult text(
+            String messageContent
+    ) {
         return new ChatAnswerResult(
                 messageContent,
                 null,
@@ -28,6 +30,22 @@ public record ChatAnswerResult(
                 null,
                 false,
                 List.of()
+        );
+    }
+
+    // 근거가 연결된 일반 텍스트 답변
+    public static ChatAnswerResult text(
+            String messageContent,
+            boolean hasSources,
+            List<AnswerSource> sources
+    ) {
+        return new ChatAnswerResult(
+                messageContent,
+                null,
+                null,
+                null,
+                hasSources,
+                sources == null ? List.of() : sources
         );
     }
 

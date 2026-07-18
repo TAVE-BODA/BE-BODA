@@ -19,6 +19,7 @@ import com.codit.be_boda.chat.service.answer.HospitalizationAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.OutpatientAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.SurgeryAnswerGenerator;
 import com.codit.be_boda.chat.service.answer.ClaimEvidenceFinder;
+import com.codit.be_boda.chat.service.answer.freetext.FreeTextAnswerGenerator;
 import com.codit.be_boda.chat.type.QuestionType;
 import com.codit.be_boda.chat.type.TreatmentType;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class ChatAnswerService {
     private final DisabilityAnswerGenerator disabilityAnswerGenerator;
     private final DocumentAnswerGenerator documentAnswerGenerator;
     private final ClaimEvidenceFinder claimEvidenceFinder;
+    private final FreeTextAnswerGenerator freeTextAnswerGenerator;
 
     public String generateAnswer(
             ChatSession chatSession,
@@ -58,6 +60,9 @@ public class ChatAnswerService {
             ChatSession chatSession,
             ChatMessageRequest request
     ) {
+        QuestionType questionType =
+                resolveQuestionType(request);
+
         // 채팅방에 연결된 증권 ID 목록 조회
         List<Long> analysisIds =
                 chatSessionPolicyRepository
@@ -76,8 +81,7 @@ public class ChatAnswerService {
                         : analysisIds.get(0);
 
         // 칩1: 청구 가능 여부
-        if (request.getQuestionType()
-                == QuestionType.CHIP_CLAIM) {
+        if (questionType == QuestionType.CHIP_CLAIM) {
 
             ClaimAnswerResult result =
                     generateClaimAnswerResult(
@@ -106,8 +110,7 @@ public class ChatAnswerService {
         }
 
         // 칩2: 예상 보험금
-        if (request.getQuestionType()
-                == QuestionType.CHIP_AMOUNT) {
+        if (questionType == QuestionType.CHIP_AMOUNT) {
 
             AmountAnswerResult result =
                     generateAmountAnswerResult(
@@ -131,8 +134,7 @@ public class ChatAnswerService {
         }
 
         // 칩3: 필요 서류
-        if (request.getQuestionType()
-                == QuestionType.CHIP_DOCUMENTS) {
+        if (questionType == QuestionType.CHIP_DOCUMENTS) {
 
             DocumentAnswerResult result =
                     documentAnswerGenerator
@@ -161,8 +163,7 @@ public class ChatAnswerService {
         }
 
         // 칩4: 보장 카드
-        if (request.getQuestionType()
-                == QuestionType.CHIP_OVERVIEW) {
+        if (questionType == QuestionType.CHIP_OVERVIEW) {
 
             return ChatAnswerResult.text(
                     "가입하신 증권의 보장 항목은 보장 카드에서 확인할 수 있어요."
@@ -170,11 +171,11 @@ public class ChatAnswerService {
         }
 
         // 직접 입력
-        if (request.getQuestionType()
-                == QuestionType.FREE_TEXT) {
+        if (questionType == QuestionType.FREE_TEXT) {
 
-            return ChatAnswerResult.text(
-                    "직접 입력 질문은 이후 약관 기반 답변 기능에서 처리될 예정입니다."
+            return freeTextAnswerGenerator.generate(
+                    chatSession,
+                    request
             );
         }
 
@@ -999,6 +1000,22 @@ public class ChatAnswerService {
                 .map(AnswerSource::chunkId)
                 .distinct()
                 .toList();
+    }
+
+    // questionType이 없고 message만 있는 후속 질문은 FREE_TEXT로 처리
+    private QuestionType resolveQuestionType(
+            ChatMessageRequest request
+    ) {
+        if (request.getQuestionType() != null) {
+            return request.getQuestionType();
+        }
+
+        if (request.getMessage() != null
+                && !request.getMessage().isBlank()) {
+            return QuestionType.FREE_TEXT;
+        }
+
+        return null;
     }
 
     private record TreatmentClaimResult(
