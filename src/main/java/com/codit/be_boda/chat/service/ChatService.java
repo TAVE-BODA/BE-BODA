@@ -29,6 +29,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -138,7 +140,7 @@ public class ChatService {
                 SenderType.AI,
                 questionType,
                 aiAnswer.messageContent(),
-                aiAnswer.hasSources(),
+                false,
                 DEFAULT_DISCLAIMER
         );
 
@@ -163,9 +165,38 @@ public class ChatService {
     public List<ChatMessageResponse> getMessages(Long chatSessionId) {
         findChatSession(chatSessionId);
 
-        return chatMessageRepository.findByChatSessionIdOrderByCreatedAtAsc(chatSessionId)
+        List<ChatMessage> messages =
+                chatMessageRepository.findByChatSessionIdOrderByCreatedAtAsc(
+                        chatSessionId
+                );
+
+        if (messages.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> messageIds = messages.stream()
+                .map(ChatMessage::getMessageId)
+                .toList();
+
+        Set<Long> messageIdsWithSources = new HashSet<>(
+                chatMessageSourceRepository.findMessageIdsWithSources(
+                        messageIds
+                )
+        );
+
+        return messages
                 .stream()
-                .map(ChatMessageResponse::from)
+                .map(message ->
+                        ChatMessageResponse.from(
+                                message,
+                                null,
+                                null,
+                                null,
+                                messageIdsWithSources.contains(
+                                        message.getMessageId()
+                                )
+                        )
+                )
                 .toList();
     }
 
