@@ -46,7 +46,11 @@ public class AsyncPolicyAnalysisService {
     @Transactional
     public void analyzeAsync(PolicyAnalysis analysis, Long chatSessionId) {
         long start = System.currentTimeMillis();
-        log.info("[ANALYSIS] 증권 비동기 분석 시작 | analysisId={}", analysis.getId());
+        log.info(
+                "[ANALYSIS] 증권 비동기 분석 시작 | analysisId={} | chatSessionId={}",
+                analysis.getId(),
+                chatSessionId
+        );
         analysis.startAnalysis();
         policyAnalysisRepository.save(analysis);
 
@@ -55,11 +59,11 @@ public class AsyncPolicyAnalysisService {
 
             log.info("[ANALYSIS] 증권 기본 정보 추출 완료 | {}ms", System.currentTimeMillis() - start);
 
-//          보장 카드를 먼저 저장(모든 증권에 대해 분석 완료되기 전까지 COMPLETE로 바꾸지 않기)
+//          보장 카드를 먼저 저장(모든 증권에 대해 분석 완료되기 전까지 DONE로 바꾸지 않기)
             createCoverageCards(analysis);
             log.info("[ANALYSIS] 보장 카드 생성 완료 | {}ms", System.currentTimeMillis() - start);
 
-//          모든 카드의 저장이 끝난 후 분석 상태를 COMPLETE로 변경
+//          모든 카드의 저장이 끝난 후 분석 상태를 DONE로 변경
             analysis.completeAnalysis(extractedData);
 
 

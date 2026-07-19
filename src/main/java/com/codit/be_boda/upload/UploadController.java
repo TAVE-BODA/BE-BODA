@@ -18,10 +18,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -42,35 +44,97 @@ public class UploadController {
 // 증권 업로드
     @Operation(summary = "보험증권 PDF 업로드",
             description = """
-                    증권 PDF를 업로드합니다.
+                    하나 이상의 증권 PDF를 업로드합니다.
                     chatSessionId를 포함하면 분석 완료 후 해당 채팅방에 자동 연결됩니다.
-                    chatSessionId가 없으면 분석만 진행합니다 (마이페이지에서 나중에 연결 가능).
+                    모든 증권을 먼저 저장하고 동일한 채팅방에 연결한 뒤
+                    각 증권의 비동기 분석을 시작합니다.
+                    연결된 모든 증권 분석과 보장카드 생성이 완료되면 대시보드가 자동 생성됩니다.
                     """)
-    @PostMapping("/policy")
+    //    @PostMapping("/policy")
+    @PostMapping(
+            value = "/policy",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+
     public ResponseEntity<Object> uploadPolicy(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "chatSessionId", required = false) Long chatSessionId,
+            @RequestParam("files") List<MultipartFile> files,
+            @RequestParam("chatSessionId") Long chatSessionId,
             HttpSession session) {
 
         LoginUser loginUser = getLoginUser(session);
+
+//      로그인 여부 확인
         if (loginUser == null)
             return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
 
-        PdfExtractService.ExtractResult extracted = pdfExtractService.extract(file);
-        if (!extracted.success())
-            return ResponseEntity.badRequest().body(
-                    Map.of("error", extracted.errorMessage(), "code", extracted.errorCode()));
+        // 파일 목록 확인
+        if (files == null || files.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "업로드할 증권 PDF가 없습니다."));
+        }
+
+        // 빈 파일 포함 여부 확인
+        boolean hasEmptyFile = files.stream()
+                .anyMatch(file -> file == null || file.isEmpty());
+
+        if (hasEmptyFile) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "비어 있는 파일이 포함되어 있습니다."));
+        }
 
         User user = userRepository.findById(loginUser.id()).orElseThrow();
-        String s3Key = s3Service.uploadFile(file, "policy/" + user.getId());
 
-        // chatSessionId 포함 시 분석 완료 후 채팅방에 자동 연결
-        PolicyAnalysis analysis = policyAnalysisService.createAndStartAnalysis(
-                user, file.getOriginalFilename(), s3Key,
-                extracted.isOcr(), extracted.text(), chatSessionId);
 
-        return ResponseEntity.ok(new UploadResponse(
-                "ANALYZING", analysis.getId(), "증권 분석을 시작했어요!"));
+        List<Long> analysisIds = new java.util.ArrayList<>();
+
+        for (MultipartFile file : files) {
+
+            if (file == null || file.isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("error", "비어 있는 파일이 포함되어 있습니다."));
+            }
+
+            PdfExtractService.ExtractResult extracted =
+                    pdfExtractService.extract(file);
+
+            if (!extracted.success()) {
+                return ResponseEntity.badRequest().body(
+                        Map.of(
+                                "error",
+                                file.getOriginalFilename()
+                                        + ": "
+                                        + extracted.errorMessage(),
+                                "code",
+                                extracted.errorCode()
+                        )
+                );
+            }
+
+            String s3Key = s3Service.uploadFile(
+                    file,
+                    "policy/" + user.getId()
+            );
+
+            PolicyAnalysis analysis =
+                    policyAnalysisService.createAndStartAnalysis(
+                            user,
+                            file.getOriginalFilename(),
+                            s3Key,
+                            extracted.isOcr(),
+                            extracted.text(),
+                            chatSessionId
+                    );
+
+            analysisIds.add(analysis.getId());
+        }
+
+        return ResponseEntity.ok(
+                Map.of(
+                        "status", "ANALYZING",
+                        "analysisIds", analysisIds,
+                        "message", files.size() + "개의 증권 분석을 시작했어요!"
+                )
+        );
     }
 
 
