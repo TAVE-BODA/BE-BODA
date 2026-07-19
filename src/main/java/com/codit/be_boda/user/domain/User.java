@@ -4,6 +4,10 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.CreatedDate;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -22,6 +26,12 @@ public class User {
     private String nickname;
 
     private String profileImageUrl;
+
+//  마이페이지에 필요해서 추가
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
 
     private User(Long kakaoId, String nickname, String profileImageUrl) {
         this.kakaoId = kakaoId;

@@ -156,7 +156,7 @@ COMMENT ON COLUMN coverage_item.detail              IS '카드 타입별 세부 
 CREATE TABLE terms_document (
                                 terms_document_id   BIGSERIAL       PRIMARY KEY,
                                 user_id             BIGINT          NOT NULL,
-
+                                analysis_id         BIGINT          NULL,
     -- 파일 정보
                                 original_file_name  VARCHAR(255)    NULL,
                                 s3_key              VARCHAR(500)    NULL,
@@ -172,7 +172,11 @@ CREATE TABLE terms_document (
                                 created_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
 
                                 CONSTRAINT fk_terms_document_user
-                                    FOREIGN KEY (user_id) REFERENCES users(id)
+                                    FOREIGN KEY (user_id) REFERENCES users(id),
+
+                                CONSTRAINT fk_terms_document_analysis
+                                    FOREIGN KEY (analysis_id)
+                                    REFERENCES policy_analysis(analysis_id)
 );
 
 COMMENT ON TABLE  terms_document                    IS '약관 문서 (약관 리스트). 증권과 독립 관리';

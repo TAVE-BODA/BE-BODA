@@ -8,4 +8,6 @@ import java.util.List;
 
 public interface TermsDocumentRepository extends JpaRepository<TermsDocument, Long> {
     List<TermsDocument> findByUserOrderByCreatedAtDesc(User user);
+
+    boolean existsByAnalysisId(Long analysisId);
 }
