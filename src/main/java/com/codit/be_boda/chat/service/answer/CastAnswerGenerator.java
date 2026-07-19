@@ -8,6 +8,7 @@ import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
 import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
+import com.codit.be_boda.chat.type.IncidentType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -166,14 +167,17 @@ public class CastAnswerGenerator {
             Long analysisId,
             ChatMessageRequest request
     ) {
-        String messageContent =
-                generateAmountAnswer(analysisId, request);
-
         CastCoverageMatch match =
                 findMatchedCastCoverage(analysisId);
 
         CoverageItemDto castItem =
                 match == null ? null : match.item();
+
+        CoverageItemDto fractureItem =
+                findMatchedFractureCoverage(
+                        analysisId,
+                        request
+                );
 
         // 증권에서 깁스 보장을 찾지 못한 경우
         if (castItem == null) {
@@ -187,7 +191,7 @@ public class CastAnswerGenerator {
                             .build();
 
             return new AmountAnswerResult(
-                    messageContent,
+                    generateAmountAnswer(analysisId, request),
                     amountGuide
             );
         }
@@ -206,16 +210,16 @@ public class CastAnswerGenerator {
                             .build();
 
             return new AmountAnswerResult(
-                    messageContent,
+                    generateAmountAnswer(analysisId, request),
                     amountGuide
             );
         }
 
-        CoverageAmountDto amount =
+        CoverageAmountDto castAmount =
                 findCastAmount(castItem);
 
         // 보장은 있지만 금액이 없는 경우
-        if (amount == null || amount.coverageAmount() == null) {
+        if (castAmount == null || castAmount.coverageAmount() == null) {
             AmountGuideResponse amountGuide =
                     AmountGuideResponse.builder()
                             .calculationAvailable(false)
@@ -226,32 +230,83 @@ public class CastAnswerGenerator {
                             .build();
 
             return new AmountAnswerResult(
-                    messageContent,
+                    generateAmountAnswer(analysisId, request),
                     amountGuide
             );
+        }
+
+        CoverageAmountDto fractureAmount =
+                findGeneralFractureAmount(
+                        analysisId,
+                        fractureItem,
+                        request
+                );
+
+        List<AmountGuideResponse.EstimatedItem> estimatedItems =
+                new ArrayList<>();
+
+        long totalAmount = 0L;
+
+        if (fractureItem != null
+                && fractureAmount != null
+                && fractureAmount.coverageAmount() != null) {
+
+            estimatedItems.add(
+                    AmountGuideResponse.EstimatedItem.builder()
+                            .coverageName(fractureItem.coverageName())
+                            .amountText(String.format(
+                                    "%,d원",
+                                    fractureAmount.coverageAmount()
+                            ))
+                            .reason(
+                                    "재해로 인한 일반 골절 진단 시 지급되는 보장금액이에요."
+                            )
+                            .build()
+            );
+
+            totalAmount += fractureAmount.coverageAmount();
+        }
+
+        estimatedItems.add(
+                AmountGuideResponse.EstimatedItem.builder()
+                        .coverageName(castItem.coverageName())
+                        .amountText(String.format(
+                                "%,d원",
+                                castAmount.coverageAmount()
+                        ))
+                        .reason(
+                                "정식 깁스 치료 시 "
+                                        + buildCastAmountCondition(castAmount)
+                                        + " 지급되는 보장금액이에요."
+                        )
+                        .build()
+        );
+
+        totalAmount += castAmount.coverageAmount();
+
+        StringBuilder messageContent = new StringBuilder();
+        messageContent.append("예상 골절·깁스 보험금은 약 ")
+                .append(String.format("%,d원", totalAmount))
+                .append("이에요.\n\n")
+                .append("[계산 내역]\n");
+
+        for (AmountGuideResponse.EstimatedItem item : estimatedItems) {
+            messageContent.append("- ")
+                    .append(item.getCoverageName())
+                    .append(": ")
+                    .append(item.getAmountText())
+                    .append("\n");
+        }
+
+        if (fractureItem != null && isLowerLegFracture(request)) {
+            messageContent.append("\n[적용 제외]\n")
+                    .append("- 5대재해골절진단보험금: 경골은 약관상 5대재해골절에 포함되지 않아요.\n");
         }
 
         AmountGuideResponse amountGuide =
                 AmountGuideResponse.builder()
                         .calculationAvailable(true)
-                        .estimatedItems(List.of(
-                                AmountGuideResponse.EstimatedItem.builder()
-                                        .coverageName(
-                                                castItem.coverageName()
-                                        )
-                                        .amountText(
-                                                String.format(
-                                                        "%,d원",
-                                                        amount.coverageAmount()
-                                                )
-                                        )
-                                        .reason(
-                                                "정식 깁스 치료 시 "
-                                                        + buildCastAmountCondition(amount)
-                                                        + " 지급되는 보장금액이에요."
-                                        )
-                                        .build()
-                        ))
+                        .estimatedItems(estimatedItems)
                         .cautions(List.of(
                                 "부목 또는 반깁스는 보장 대상에서 제외될 수 있어요.",
                                 "동일한 원인으로 여러 번 깁스 치료를 받은 경우 1회만 지급될 수 있어요.",
@@ -260,9 +315,110 @@ public class CastAnswerGenerator {
                         .build();
 
         return new AmountAnswerResult(
-                messageContent,
+                messageContent.toString().trim(),
                 amountGuide
         );
+    }
+
+    private CoverageItemDto findMatchedFractureCoverage(
+            Long analysisId,
+            ChatMessageRequest request
+    ) {
+        if (analysisId == null
+                || request == null
+                || request.getIncidentType() != IncidentType.INJURY
+                || !normalize(request.getMessage()).contains("골절")) {
+            return null;
+        }
+
+        return coverageItemQueryRepository.findByAnalysisId(analysisId)
+                .stream()
+                .filter(item -> "골절재해".equals(item.coverageType()))
+                .map(item -> parseCoverageDetail(item.detail()))
+                .filter(detail -> detail.items() != null)
+                .flatMap(detail -> detail.items().stream())
+                .filter(item -> item.coverageName() != null)
+                .filter(item -> normalize(item.coverageName())
+                        .contains("재해골절진단"))
+                .filter(item -> !normalize(item.coverageName())
+                        .contains("5대"))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private CoverageAmountDto findFirstAmount(
+            CoverageItemDto item
+    ) {
+        if (item == null
+                || item.amounts() == null) {
+            return null;
+        }
+
+        return item.amounts().stream()
+                .filter(amount -> amount != null
+                        && amount.coverageAmount() != null)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private CoverageAmountDto findGeneralFractureAmount(
+            Long analysisId,
+            CoverageItemDto generalFractureItem,
+            ChatMessageRequest request
+    ) {
+        CoverageAmountDto originalAmount =
+                findFirstAmount(generalFractureItem);
+
+        if (analysisId == null
+                || !isLowerLegFracture(request)) {
+            return originalAmount;
+        }
+
+        // 일반 재해골절과 5대재해골절의 금액이 분석 과정에서
+        // 서로 뒤바뀌어 저장된 경우에도 경골에는 일반 골절 금액만 적용한다.
+        Long generalFractureAmount =
+                coverageItemQueryRepository.findByAnalysisId(analysisId)
+                        .stream()
+                        .filter(item -> "골절재해".equals(item.coverageType()))
+                        .map(item -> parseCoverageDetail(item.detail()))
+                        .filter(detail -> detail.items() != null)
+                        .flatMap(detail -> detail.items().stream())
+                        .filter(item -> item.coverageName() != null)
+                        .filter(item -> {
+                            String name = normalize(item.coverageName());
+                            return name.contains("골절")
+                                    && name.contains("진단");
+                        })
+                        .flatMap(item -> item.amounts() == null
+                                ? java.util.stream.Stream.empty()
+                                : item.amounts().stream())
+                        .filter(amount -> amount != null
+                                && amount.coverageAmount() != null)
+                        .map(CoverageAmountDto::coverageAmount)
+                        .min(Long::compareTo)
+                        .orElse(null);
+
+        if (generalFractureAmount == null) {
+            return originalAmount;
+        }
+
+        return new CoverageAmountDto(
+                originalAmount == null
+                        ? "1회당"
+                        : originalAmount.condition(),
+                generalFractureAmount
+        );
+    }
+
+    private boolean isLowerLegFracture(
+            ChatMessageRequest request
+    ) {
+        String message = normalize(request.getMessage());
+
+        return message.contains("경골")
+                || message.contains("정강이")
+                || message.contains("종아리뼈")
+                || message.contains("비골");
     }
 
     // CAST 청구 가능 여부 답변 문장 생성

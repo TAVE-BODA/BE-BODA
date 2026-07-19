@@ -258,12 +258,39 @@ public class OutpatientAnswerGenerator {
         String coverageType = normalize(coverageItem.coverageType());
         String coverageName = normalize(item.coverageName());
 
+        if (isInformationalOutpatientItem(item)) {
+            return false;
+        }
+
         return coverageType.contains("통원")
                 || coverageType.contains("실손")
                 || coverageName.contains("통원")
                 || coverageName.contains("외래")
                 || coverageName.contains("실손")
                 || coverageName.contains("처방조제");
+    }
+
+    private boolean isInformationalOutpatientItem(
+            CoverageItemDto item
+    ) {
+        String coverageName = normalize(item.coverageName());
+
+        if (coverageName.equals("실손세대")
+                || coverageName.contains("가입시확인사항")) {
+            return true;
+        }
+
+        if (item.amounts() == null || item.amounts().isEmpty()) {
+            return false;
+        }
+
+        return item.amounts().stream()
+                .map(amount -> normalize(amount.condition()))
+                .anyMatch(condition ->
+                        condition.contains("가입시확인사항")
+                                || condition.contains("관련안내가확인")
+                                || condition.contains("안내사항")
+                );
     }
 
     private String buildAmountText(CoverageItemDto item) {
