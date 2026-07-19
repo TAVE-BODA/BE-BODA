@@ -12,6 +12,7 @@ public interface ChatSessionPolicyRepository extends JpaRepository<ChatSessionPo
     List<ChatSessionPolicy> findByChatSessionId(Long chatSessionId);
 
     // 분석이 끝난 analysisId로 chatSessionId를 찾아서 대시보드를 자동으로 생성
+    // 증권의 analysisId로 채팅방 조회 메소드(마이페이지에서 증권과 약관 매핑)
     Optional<ChatSessionPolicy> findByAnalysisId(Long analysisId);
 
     // 채팅방-증권 연결 삭제 (삭제 기능 시 사용)
