@@ -9,7 +9,11 @@ import com.codit.be_boda.analysis.service.PolicyAnalysisService;
 import com.codit.be_boda.analysis.service.TermsAnalysisService;
 import com.codit.be_boda.analysis.dto.AnalysisStatusResponse;
 import com.codit.be_boda.auth.dto.LoginUser;
+import com.codit.be_boda.chat.entity.ChatSessionPolicy;
+import com.codit.be_boda.chat.repository.ChatSessionPolicyRepository;
+import com.codit.be_boda.upload.dto.UploadErrorResponse;
 import com.codit.be_boda.upload.dto.UploadResponse;
+import com.codit.be_boda.upload.service.DocumentValidator;
 import com.codit.be_boda.upload.service.PdfExtractService;
 import com.codit.be_boda.upload.service.S3Service;
 import com.codit.be_boda.user.domain.User;
@@ -18,12 +22,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -33,113 +35,72 @@ import java.util.Map;
 public class UploadController {
 
     private final PdfExtractService pdfExtractService;
+    private final DocumentValidator documentValidator;
     private final PolicyAnalysisService policyAnalysisService;
     private final TermsAnalysisService termsAnalysisService;
     private final PolicyAnalysisRepository policyAnalysisRepository;
     private final TermsDocumentRepository termsDocumentRepository;
     private final CoverageItemRepository coverageItemRepository;
+    private final ChatSessionPolicyRepository chatSessionPolicyRepository;
     private final UserRepository userRepository;
     private final S3Service s3Service;
 
-// 증권 업로드
+    // 증권 업로드
     @Operation(summary = "보험증권 PDF 업로드",
             description = """
-                    하나 이상의 증권 PDF를 업로드합니다.
+                    증권 PDF를 업로드합니다.
                     chatSessionId를 포함하면 분석 완료 후 해당 채팅방에 자동 연결됩니다.
-                    모든 증권을 먼저 저장하고 동일한 채팅방에 연결한 뒤
-                    각 증권의 비동기 분석을 시작합니다.
-                    연결된 모든 증권 분석과 보장카드 생성이 완료되면 대시보드가 자동 생성됩니다.
+                    한 채팅방에는 증권을 최대 3개까지 연결할 수 있습니다.
                     """)
-
     @PostMapping("/policy")
     public ResponseEntity<Object> uploadPolicy(
-            @RequestParam("files") List<MultipartFile> files,
+            @RequestParam("file") MultipartFile file,
             @RequestParam(value = "chatSessionId", required = false) Long chatSessionId,
             HttpSession session) {
 
         LoginUser loginUser = getLoginUser(session);
+        if (loginUser == null) return unauthorized();
 
-//      로그인 여부 확인
-        if (loginUser == null)
-            return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
-
-        // 파일 목록 확인
-        if (files == null || files.isEmpty()) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "업로드할 증권 PDF가 없습니다."));
+        // 증권 1~3개 상한 검증 (분석 시작 전에 막아야 고아 레코드가 생기지 않음)
+        if (chatSessionId != null) {
+            int linkedCount =
+                    chatSessionPolicyRepository.findByChatSessionId(chatSessionId).size();
+            if (linkedCount >= ChatSessionPolicy.MAX_PER_SESSION) {
+                return ResponseEntity.badRequest().body(new UploadErrorResponse(
+                        "POLICY_LIMIT_EXCEEDED",
+                        "한 채팅방에는 증권을 최대 " + ChatSessionPolicy.MAX_PER_SESSION + "개까지 올릴 수 있어요."));
+            }
         }
 
-        // 빈 파일 포함 여부 확인
-        boolean hasEmptyFile = files.stream()
-                .anyMatch(file -> file == null || file.isEmpty());
+        PdfExtractService.ExtractResult extracted = pdfExtractService.extract(file);
+        if (!extracted.success())
+            return ResponseEntity.badRequest().body(
+                    new UploadErrorResponse(extracted.errorCode(), extracted.errorMessage()));
 
-        if (hasEmptyFile) {
-            return ResponseEntity.badRequest()
-                    .body(Map.of("error", "비어 있는 파일이 포함되어 있습니다."));
-        }
+        // 보험 서류인지 확인
+        if (!documentValidator.isPolicyDocument(extracted.text()))
+            return ResponseEntity.badRequest().body(new UploadErrorResponse(
+                    "NOT_INSURANCE_DOCUMENT",
+                    "보험증권 파일이 아닌 것 같아요. 보험사에서 받은 증권 PDF를 올려주세요."));
 
         User user = userRepository.findById(loginUser.id()).orElseThrow();
+        String s3Key = s3Service.uploadFile(file, "policy/" + user.getId());
 
+        PolicyAnalysis analysis = policyAnalysisService.createAndStartAnalysis(
+                user, file.getOriginalFilename(), s3Key,
+                extracted.isOcr(), extracted.text(), chatSessionId);
 
-        List<Long> analysisIds = new java.util.ArrayList<>();
-
-        for (MultipartFile file : files) {
-
-            if (file == null || file.isEmpty()) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "비어 있는 파일이 포함되어 있습니다."));
-            }
-
-            PdfExtractService.ExtractResult extracted =
-                    pdfExtractService.extract(file);
-
-            if (!extracted.success()) {
-                return ResponseEntity.badRequest().body(
-                        Map.of(
-                                "error",
-                                file.getOriginalFilename()
-                                        + ": "
-                                        + extracted.errorMessage(),
-                                "code",
-                                extracted.errorCode()
-                        )
-                );
-            }
-
-            String s3Key = s3Service.uploadFile(
-                    file,
-                    "policy/" + user.getId()
-            );
-
-            PolicyAnalysis analysis =
-                    policyAnalysisService.createAndStartAnalysis(
-                            user,
-                            file.getOriginalFilename(),
-                            s3Key,
-                            extracted.isOcr(),
-                            extracted.text(),
-                            chatSessionId
-                    );
-
-            analysisIds.add(analysis.getId());
-        }
-
-        return ResponseEntity.ok(
-                Map.of(
-                        "status", "ANALYZING",
-                        "analysisIds", analysisIds,
-                        "message", files.size() + "개의 증권 분석을 시작했어요!"
-                )
-        );
+        return ResponseEntity.ok(new UploadResponse(
+                "ANALYZING", analysis.getId(), "증권 분석을 시작했어요!"));
     }
 
 
-    //약관 업로드
+    // 약관 업로드
     @Operation(summary = "보험약관 PDF 업로드",
             description = """
                     약관 PDF를 업로드합니다.
                     chatSessionId를 포함하면 파싱 완료 후 해당 채팅방에 자동 연결됩니다.
-                    chatSessionId가 없으면 파싱만 진행합니다 (마이페이지에서 나중에 연결 가능).
+                    채팅방에 연결된 증권과 보험사가 다르면 TERMS_MISMATCH로 거절됩니다.
                     """)
     @PostMapping("/terms")
     public ResponseEntity<Object> uploadTerms(
@@ -148,13 +109,24 @@ public class UploadController {
             HttpSession session) {
 
         LoginUser loginUser = getLoginUser(session);
-        if (loginUser == null)
-            return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
+        if (loginUser == null) return unauthorized();
 
         PdfExtractService.ExtractResult extracted = pdfExtractService.extractTerms(file);
         if (!extracted.success())
             return ResponseEntity.badRequest().body(
-                    Map.of("error", extracted.errorMessage(), "code", extracted.errorCode()));
+                    new UploadErrorResponse(extracted.errorCode(), extracted.errorMessage()));
+
+        // 보험 서류인지 확인
+        if (!documentValidator.isTermsDocument(extracted.text()))
+            return ResponseEntity.badRequest().body(new UploadErrorResponse(
+                    "NOT_INSURANCE_DOCUMENT",
+                    "보험약관 파일이 아닌 것 같아요. 보험사 홈페이지에서 받은 약관 PDF를 올려주세요."));
+
+        // 채팅방에 연결된 증권과 같은 보험사인지 확인
+        if (!documentValidator.matchesLinkedPolicy(extracted.text(), chatSessionId))
+            return ResponseEntity.badRequest().body(new UploadErrorResponse(
+                    "TERMS_MISMATCH",
+                    "업로드한 증권과 다른 보험사의 약관이에요. 증권과 같은 보험사의 약관을 올려주세요."));
 
         User user = userRepository.findById(loginUser.id()).orElseThrow();
         String s3Key = s3Service.uploadFile(file, "terms/" + user.getId());
@@ -168,7 +140,6 @@ public class UploadController {
             pageTexts = null;
         }
 
-        // chatSessionId 포함 시 파싱 완료 후 채팅방에 자동 연결
         TermsDocument doc = termsAnalysisService.createAndStartParsing(
                 user, file.getOriginalFilename(), s3Key, extracted.text(), pageTexts, chatSessionId);
 
@@ -178,7 +149,7 @@ public class UploadController {
     }
 
 
-    //상태 조회
+    // 상태 조회
     @Operation(summary = "증권 분석 상태 조회")
     @GetMapping("/status/{analysisId}")
     public ResponseEntity<Object> policyStatus(
@@ -186,8 +157,7 @@ public class UploadController {
             HttpSession session) {
 
         LoginUser loginUser = getLoginUser(session);
-        if (loginUser == null)
-            return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
+        if (loginUser == null) return unauthorized();
 
         PolicyAnalysis analysis = policyAnalysisRepository.findById(analysisId).orElse(null);
         if (analysis == null || !analysis.getUser().getId().equals(loginUser.id()))
@@ -208,8 +178,7 @@ public class UploadController {
             HttpSession session) {
 
         LoginUser loginUser = getLoginUser(session);
-        if (loginUser == null)
-            return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
+        if (loginUser == null) return unauthorized();
 
         TermsDocument doc = termsDocumentRepository.findById(termsDocumentId).orElse(null);
         // 삭제된(soft delete) 약관은 없는 것으로 처리
@@ -230,8 +199,7 @@ public class UploadController {
             HttpSession session) {
 
         LoginUser loginUser = getLoginUser(session);
-        if (loginUser == null)
-            return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
+        if (loginUser == null) return unauthorized();
 
         try {
             policyAnalysisService.deletePolicy(analysisId, loginUser.id());
@@ -239,7 +207,8 @@ public class UploadController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         } catch (SecurityException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(403).body(
+                    new UploadErrorResponse("FORBIDDEN", e.getMessage()));
         }
     }
 
@@ -254,8 +223,7 @@ public class UploadController {
             HttpSession session) {
 
         LoginUser loginUser = getLoginUser(session);
-        if (loginUser == null)
-            return ResponseEntity.status(401).body(Map.of("error", "로그인이 필요해요."));
+        if (loginUser == null) return unauthorized();
 
         try {
             termsAnalysisService.deleteTerms(termsDocumentId, loginUser.id());
@@ -263,8 +231,14 @@ public class UploadController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
         } catch (SecurityException e) {
-            return ResponseEntity.status(403).body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(403).body(
+                    new UploadErrorResponse("FORBIDDEN", e.getMessage()));
         }
+    }
+
+    private ResponseEntity<Object> unauthorized() {
+        return ResponseEntity.status(401).body(
+                new UploadErrorResponse("UNAUTHORIZED", "로그인이 필요해요."));
     }
 
     private LoginUser getLoginUser(HttpSession session) {
