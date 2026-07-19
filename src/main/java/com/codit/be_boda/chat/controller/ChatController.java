@@ -53,6 +53,27 @@ public class ChatController {
     }
 
     @Operation(
+            summary = "채팅방 삭제",
+            description = """
+                    채팅방과 대화 이력(메시지·답변 근거), 채팅방-증권 연결, 대시보드를 삭제합니다.
+                    증권과 약관 자체는 삭제되지 않습니다 (다른 채팅방에서 재사용될 수 있음).
+                    """
+    )
+    @ApiResponse(responseCode = "200", description = "채팅방 삭제 성공")
+    @ApiResponse(responseCode = "401", description = "로그인 필요")
+    @ApiResponse(responseCode = "403", description = "본인의 채팅방이 아님")
+    @ApiResponse(responseCode = "404", description = "존재하지 않는 채팅방")
+    @DeleteMapping("/sessions/{chatSessionId}")
+    public ResponseEntity<Void> deleteSession(
+            @PathVariable Long chatSessionId,
+            HttpSession session
+    ) {
+        Long userId = getUserId(session);
+        chatService.deleteSession(chatSessionId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(
             summary = "챗봇 질문/조건 전송",
             description = "사용자 질문과 보험 상담 조건을 저장하고, USER 메시지와 AI 응답 메시지를 한 쌍으로 반환합니다."
     )
