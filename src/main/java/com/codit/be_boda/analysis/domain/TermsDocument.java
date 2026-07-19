@@ -25,6 +25,11 @@ public class TermsDocument {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+
+//  FK로 추가(마이페이지에서 약관 테이블에서 증권의 유무로 약관의 유무를 판단)
+    @Column(name = "analysis_id")
+    private Long analysisId;
+
     @Column(name = "original_file_name")
     private String originalFileName;
 
@@ -56,8 +61,9 @@ public class TermsDocument {
     private LocalDateTime deletedAt;
 
     @Builder
-    public TermsDocument(User user, String originalFileName, String s3Key) {
+    public TermsDocument(User user, Long analysisId, String originalFileName, String s3Key) {
         this.user = user;
+        this.analysisId = analysisId;
         this.originalFileName = originalFileName;
         this.s3Key = s3Key;
         this.parsingStatus = "PENDING";
