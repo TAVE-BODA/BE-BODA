@@ -294,10 +294,35 @@ public class ChatService {
             ChatMessageSourceRepository.MessageSourceInfo source,
             QuestionType questionType
     ) {
+        String citedText = buildCitedText(source);
+
+        if (questionType == QuestionType.CHIP_CLAIM
+                && isDentalExtractionExclusionSource(citedText)) {
+            return "보장 대상이 되지 않는 영구치 발치의 원인";
+        }
+
+        if (questionType == QuestionType.CHIP_DOCUMENTS) {
+            String documentSourceTitle =
+                    buildDocumentSourceTitle(citedText);
+
+            if (documentSourceTitle != null) {
+                return documentSourceTitle;
+            }
+        }
+
+        if (questionType == QuestionType.CHIP_AMOUNT) {
+            String amountSourceTitle =
+                    buildAmountSourceTitle(citedText);
+
+            if (amountSourceTitle != null) {
+                return amountSourceTitle;
+            }
+        }
+
         // 모든 질문 유형에서 실제 근거 본문의 조항명을 가장 먼저 사용
         String contentTitle =
                 extractSourceTitleFromText(
-                        buildCitedText(source)
+                        citedText
                 );
 
         if (contentTitle != null
@@ -306,6 +331,95 @@ public class ChatService {
         }
 
         return buildMetadataSourceTitle(source);
+    }
+
+    private String buildDocumentSourceTitle(
+            String citedText
+    ) {
+        if (citedText == null || citedText.isBlank()) {
+            return null;
+        }
+
+        String normalizedText = citedText
+                .replaceAll("\\s+", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace("·", "")
+                .replace("-", "");
+
+        if (normalizedText.contains("치과치료관련증명서")
+                && (normalizedText.contains("치과치료확인서")
+                || normalizedText.contains("치과진료기록")
+                || normalizedText.contains("Xray사진"))) {
+            return "치과치료 관련 증명서";
+        }
+
+        if (normalizedText.contains("사고보험금청구서류대표예시")
+                || (normalizedText.contains("청구서")
+                && normalizedText.contains("신분증")
+                && normalizedText.contains("구비서류"))) {
+            return "사고보험금 청구서류 대표예시";
+        }
+
+        return null;
+    }
+
+    private String buildAmountSourceTitle(
+            String citedText
+    ) {
+        if (citedText == null || citedText.isBlank()) {
+            return null;
+        }
+
+        String normalizedText = citedText
+                .replaceAll("\\s+", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace("·", "")
+                .replace("-", "");
+
+        if (normalizedText.contains("2인실입원상급종합병원")
+                || normalizedText.contains("3인실입원상급종합병원")) {
+            return "2·3인실 입원(상급종합병원) 보험금 지급사유";
+        }
+
+        if (normalizedText.contains("2인실입원종합병원이상")
+                || normalizedText.contains("3인실입원종합병원이상")
+                || normalizedText.contains("상급종합병원혹은종합병원")) {
+            return "2·3인실 입원(종합병원 이상) 보험금 지급사유";
+        }
+
+        if (normalizedText.contains("재해골절진단보험금")
+                && normalizedText.contains("깁스부목제외치료보험금")) {
+            return "재해골절·깁스치료 보험금 지급사유";
+        }
+
+        if (normalizedText.contains("재해골절진단보험금")) {
+            return "재해골절진단보험금 지급사유";
+        }
+
+        if (normalizedText.contains("깁스부목제외치료보험금")) {
+            return "깁스치료보험금 지급사유";
+        }
+
+        return null;
+    }
+
+    private boolean isDentalExtractionExclusionSource(
+            String citedText
+    ) {
+        if (citedText == null || citedText.isBlank()) {
+            return false;
+        }
+
+        String normalizedText = citedText
+                .replaceAll("\\s+", "")
+                .replace("(", "")
+                .replace(")", "");
+
+        return normalizedText.contains("제3대구치사랑니를발치")
+                || normalizedText.contains("부분매복되거나,완전매복되어발치")
+                || normalizedText.contains("부분매복되거나완전매복되어발치");
     }
 
     private String extractSourceTitleFromText(String citedText) {
