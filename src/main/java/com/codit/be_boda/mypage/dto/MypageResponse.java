@@ -8,17 +8,17 @@ import java.util.List;
 public record MypageResponse(
         String userName,
         LocalDate firstLoginDate,
-        List<MypageInsuranceResponse> insurances
+        List<MypageInsuranceResponse> insurers   // 보험사 카테고리 목록
 ) {
 
     public static MypageResponse of(
             User user,
-            List<MypageInsuranceResponse> insurances
+            List<MypageInsuranceResponse> insurers
     ) {
         return new MypageResponse(
                 user.getNickname(),
                 user.getCreatedAt().toLocalDate(),
-                insurances
+                insurers
         );
     }
 }

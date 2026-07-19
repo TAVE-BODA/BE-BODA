@@ -3,6 +3,7 @@ package com.codit.be_boda.analysis.service;
 import com.codit.be_boda.analysis.domain.*;
 import com.codit.be_boda.analysis.repository.*;
 import com.codit.be_boda.chat.repository.ChatSessionRepository;
+import com.codit.be_boda.global.support.InsurerNameResolver;
 import com.codit.be_boda.rag.RagService;
 import com.codit.be_boda.upload.service.S3Service;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ public class AsyncTermsAnalysisService {
     private final ChatSessionRepository chatSessionRepository;
     private final S3Service s3Service;
     private final RagService ragService;
+    private final InsurerNameResolver insurerNameResolver;
 
     private static final Pattern CLAUSE_PATTERN =
             Pattern.compile("(제\\s*\\d+(?:-\\d+)?조(?:의\\d+)?)\\s*[\\(（]([^\\)）]{1,50})[\\)）]");
@@ -79,7 +81,11 @@ public class AsyncTermsAnalysisService {
 
             // 5. S3 원본 파기
             s3Service.deleteFile(doc.getS3Key());
-            doc.completeParsing(null, null, maskedText);
+            // 약관 본문에서 보험사명 추출
+            // 마이페이지에서 "약관이 있으면 약관 기준으로 보험사 확정" 규칙에 사용된다
+            String detectedCompany = insurerNameResolver.detectFromText(maskedText);
+            log.info("[TERMS] 약관 보험사 추출 | termsId={} company={}", doc.getId(), detectedCompany);
+            doc.completeParsing(detectedCompany, null, maskedText);
             termsDocumentRepository.save(doc);
 
             log.info("[TERMS] 약관 파싱 전체 완료 | 총{}ms", System.currentTimeMillis() - start);
