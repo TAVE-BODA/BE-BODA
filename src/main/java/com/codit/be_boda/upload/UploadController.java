@@ -50,11 +50,11 @@ public class UploadController {
                     각 증권의 비동기 분석을 시작합니다.
                     연결된 모든 증권 분석과 보장카드 생성이 완료되면 대시보드가 자동 생성됩니다.
                     """)
-    @PostMapping("/policy")
 
+    @PostMapping("/policy")
     public ResponseEntity<Object> uploadPolicy(
             @RequestParam("files") List<MultipartFile> files,
-            @RequestParam("chatSessionId") Long chatSessionId,
+            @RequestParam(value = "chatSessionId", required = false) Long chatSessionId,
             HttpSession session) {
 
         LoginUser loginUser = getLoginUser(session);
