@@ -9,6 +9,7 @@ import com.codit.be_boda.chat.dto.response.ClaimGuideResponse;
 import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository;
 import com.codit.be_boda.chat.repository.CoverageItemQueryRepository.CoverageItemInfo;
+import com.codit.be_boda.chat.repository.PolicyAnalysisQueryRepository;
 import com.codit.be_boda.chat.type.HospitalType;
 import com.codit.be_boda.chat.type.RoomType;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,8 +17,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -26,6 +28,7 @@ public class HospitalizationAnswerGenerator {
 
     private final CoverageItemQueryRepository coverageItemQueryRepository;
     private final ObjectMapper objectMapper;
+    private final PolicyAnalysisQueryRepository policyAnalysisQueryRepository;
 
     // CHIP_CLAIM 중 HOSPITALIZATION 처리
     public String generateClaimAnswer(Long analysisId, ChatMessageRequest request) {
@@ -52,7 +55,11 @@ public class HospitalizationAnswerGenerator {
                 .append("- ")
                 .append(hospitalizationItem.coverageName());
 
-        CoverageAmountDto amount = getFirstAmount(hospitalizationItem);
+        CoverageAmountDto amount = findApplicableHospitalizationAmount(
+                analysisId,
+                request,
+                hospitalizationItem
+        );
 
         if (amount != null && amount.coverageAmount() != null) {
             answer.append(": ")
@@ -117,7 +124,11 @@ public class HospitalizationAnswerGenerator {
                         + " 조건에 해당해 청구 가능성이 있어요."
         );
 
-        CoverageAmountDto amount = getFirstAmount(hospitalizationItem);
+        CoverageAmountDto amount = findApplicableHospitalizationAmount(
+                analysisId,
+                request,
+                hospitalizationItem
+        );
 
         if (amount != null && amount.coverageAmount() != null) {
             reasons.add(
@@ -156,7 +167,11 @@ public class HospitalizationAnswerGenerator {
             return "입력하신 입원 조건과 직접 매칭되는 입원비 보장 항목을 찾지 못했어요.";
         }
 
-        CoverageAmountDto amount = getFirstAmount(hospitalizationItem);
+        CoverageAmountDto amount = findApplicableHospitalizationAmount(
+                analysisId,
+                request,
+                hospitalizationItem
+        );
 
         if (amount == null || amount.coverageAmount() == null) {
             return "입원비 보장은 확인됐지만, 정확한 금액은 약관 확인이 필요해요.";
@@ -249,7 +264,11 @@ public class HospitalizationAnswerGenerator {
         }
 
         CoverageAmountDto amount =
-                getFirstAmount(hospitalizationItem);
+                findApplicableHospitalizationAmount(
+                        analysisId,
+                        request,
+                        hospitalizationItem
+                );
 
         // 보장은 있지만 금액을 확인하지 못한 경우
         if (amount == null
@@ -416,12 +435,61 @@ public class HospitalizationAnswerGenerator {
         return hospitalizationInfo.getHospitalizedNights() + 1;
     }
 
-    private CoverageAmountDto getFirstAmount(CoverageItemDto item) {
-        if (item.amounts() == null || item.amounts().isEmpty()) {
+    private CoverageAmountDto findApplicableHospitalizationAmount(
+            Long analysisId,
+            ChatMessageRequest request,
+            CoverageItemDto hospitalizationItem
+    ) {
+        if (hospitalizationItem == null
+                || hospitalizationItem.amounts() == null
+                || hospitalizationItem.amounts().isEmpty()) {
             return null;
         }
 
-        return item.amounts().get(0);
+        if (hospitalizationItem.amounts().size() == 1) {
+            return hospitalizationItem.amounts().get(0);
+        }
+
+        if (analysisId == null
+                || request == null
+                || request.getTreatmentStartDate() == null) {
+            return null;
+        }
+
+        LocalDate insuranceStartDate =
+                policyAnalysisQueryRepository
+                        .findInsuranceStartDateByAnalysisId(analysisId)
+                        .orElse(null);
+
+        if (insuranceStartDate == null) {
+            return null;
+        }
+
+        LocalDate treatmentStartDate =
+                request.getTreatmentStartDate();
+
+        if (treatmentStartDate.isBefore(insuranceStartDate)) {
+            return null;
+        }
+
+        boolean withinOneYear =
+                !treatmentStartDate.isAfter(
+                        insuranceStartDate.plusYears(1)
+                );
+
+        String targetCondition =
+                withinOneYear
+                        ? "1년이내"
+                        : "1년초과";
+
+        return hospitalizationItem.amounts()
+                .stream()
+                .filter(amount ->
+                        normalize(amount.condition())
+                                .contains(targetCondition)
+                )
+                .findFirst()
+                .orElse(null);
     }
 
     private String getHospitalDescription(HospitalType hospitalType) {
@@ -449,7 +517,11 @@ public class HospitalizationAnswerGenerator {
     }
 
     private String normalize(String value) {
-        return value.replace(" ", "");
+        if (value == null) {
+            return "";
+        }
+
+        return value.replaceAll("\\s+", "");
     }
 
     private CoverageLlmResponse parseCoverageDetail(String detail) {

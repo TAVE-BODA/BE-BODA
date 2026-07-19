@@ -29,6 +29,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -138,7 +140,7 @@ public class ChatService {
                 SenderType.AI,
                 questionType,
                 aiAnswer.messageContent(),
-                aiAnswer.hasSources(),
+                false,
                 DEFAULT_DISCLAIMER
         );
 
@@ -163,9 +165,38 @@ public class ChatService {
     public List<ChatMessageResponse> getMessages(Long chatSessionId) {
         findChatSession(chatSessionId);
 
-        return chatMessageRepository.findByChatSessionIdOrderByCreatedAtAsc(chatSessionId)
+        List<ChatMessage> messages =
+                chatMessageRepository.findByChatSessionIdOrderByCreatedAtAsc(
+                        chatSessionId
+                );
+
+        if (messages.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> messageIds = messages.stream()
+                .map(ChatMessage::getMessageId)
+                .toList();
+
+        Set<Long> messageIdsWithSources = new HashSet<>(
+                chatMessageSourceRepository.findMessageIdsWithSources(
+                        messageIds
+                )
+        );
+
+        return messages
                 .stream()
-                .map(ChatMessageResponse::from)
+                .map(message ->
+                        ChatMessageResponse.from(
+                                message,
+                                null,
+                                null,
+                                null,
+                                messageIdsWithSources.contains(
+                                        message.getMessageId()
+                                )
+                        )
+                )
                 .toList();
     }
 
@@ -217,15 +248,15 @@ public class ChatService {
             ChatMessageSourceRepository.MessageSourceInfo source,
             QuestionType questionType
     ) {
-        if (questionType == QuestionType.FREE_TEXT) {
-            String contentTitle =
-                    extractSourceTitleFromText(
-                            buildCitedText(source)
-                    );
+        // 모든 질문 유형에서 실제 근거 본문의 조항명을 가장 먼저 사용
+        String contentTitle =
+                extractSourceTitleFromText(
+                        buildCitedText(source)
+                );
 
-            if (contentTitle != null) {
-                return contentTitle;
-            }
+        if (contentTitle != null
+                && !contentTitle.isBlank()) {
+            return contentTitle;
         }
 
         return buildMetadataSourceTitle(source);
@@ -299,7 +330,44 @@ public class ChatService {
             return sectionTitle;
         }
 
-        return "약관 근거";
+        String textTitle =
+                buildTextFallbackTitle(
+                        buildCitedText(source)
+                );
+
+        if (textTitle != null) {
+            return textTitle;
+        }
+
+        return "보험약관 조항";
+    }
+
+    private String buildTextFallbackTitle(String citedText) {
+        if (citedText == null || citedText.isBlank()) {
+            return null;
+        }
+
+        String[] lines =
+                citedText.split("\\R");
+
+        for (String line : lines) {
+            String normalizedLine =
+                    line.replaceAll("\\s+", " ")
+                            .trim();
+
+            if (normalizedLine.isBlank()) {
+                continue;
+            }
+
+            if (normalizedLine.length() <= 80) {
+                return normalizedLine;
+            }
+
+            return normalizedLine.substring(0, 80)
+                    + "...";
+        }
+
+        return null;
     }
 
     private String buildCitedText(ChatMessageSourceRepository.MessageSourceInfo source) {

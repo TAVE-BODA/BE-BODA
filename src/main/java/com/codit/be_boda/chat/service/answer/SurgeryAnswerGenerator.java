@@ -212,30 +212,27 @@ public class SurgeryAnswerGenerator {
             Long analysisId,
             ChatMessageRequest request
     ) {
-        String messageContent =
-                generateAmountAnswer(
-                        analysisId,
-                        request
-                );
+        String messageContent = generateAmountAnswer(
+                analysisId,
+                request
+        );
 
-        CoverageItemDto surgeryItem =
-                findMatchedSurgeryItem(
-                        analysisId,
-                        request
-                );
+        CoverageItemDto surgeryItem = findMatchedSurgeryItem(
+                analysisId,
+                request
+        );
 
         if (surgeryItem == null
                 || surgeryItem.amounts() == null
                 || surgeryItem.amounts().isEmpty()) {
 
-            AmountGuideResponse amountGuide =
-                    AmountGuideResponse.builder()
-                            .calculationAvailable(false)
-                            .estimatedItems(List.of())
-                            .cautions(List.of(
-                                    "가입하신 증권에서 입력하신 상황과 직접 매칭되는 수술비 보장 항목을 찾지 못했어요."
-                            ))
-                            .build();
+            AmountGuideResponse amountGuide = AmountGuideResponse.builder()
+                    .calculationAvailable(false)
+                    .estimatedItems(List.of())
+                    .cautions(List.of(
+                            "가입하신 증권에서 입력하신 상황과 직접 매칭되는 수술비 보장 항목을 찾지 못했어요."
+                    ))
+                    .build();
 
             return new AmountAnswerResult(
                     messageContent,
@@ -243,74 +240,55 @@ public class SurgeryAnswerGenerator {
             );
         }
 
-        CoverageAmountDto applicableAmount =
-                findApplicableSurgeryAmount(
-                        analysisId,
-                        request,
-                        surgeryItem
+        CoverageAmountDto applicableAmount = findApplicableSurgeryAmount(
+                analysisId,
+                request,
+                surgeryItem
+        );
+
+        List<CoverageAmountDto> responseAmounts =
+                resolveResponseAmounts(
+                        surgeryItem,
+                        applicableAmount
                 );
 
         boolean calculationAvailable =
-                applicableAmount != null
-                        || !hasDifferentAmounts(surgeryItem);
+                responseAmounts.size() == 1
+                        && responseAmounts.get(0) != null
+                        && responseAmounts.get(0).coverageAmount() != null;
 
-        List<CoverageAmountDto> responseAmounts;
+        List<AmountGuideResponse.EstimatedItem> estimatedItems =
+                responseAmounts.stream()
+                        .map(amount ->
+                                AmountGuideResponse.EstimatedItem.builder()
+                                        .coverageName(
+                                                surgeryItem.coverageName()
+                                        )
+                                        .amountText(
+                                                buildAmountText(amount)
+                                        )
+                                        .reason(
+                                                buildAmountReason(
+                                                        amount,
+                                                        request
+                                                )
+                                        )
+                                        .build()
+                        )
+                        .toList();
 
-        if (applicableAmount != null) {
-            responseAmounts =
-                    List.of(applicableAmount);
-        } else if (!hasDifferentAmounts(surgeryItem)) {
-            responseAmounts =
-                    List.of(surgeryItem.amounts().get(0));
-        } else {
-            responseAmounts =
-                    surgeryItem.amounts();
-        }
-
-        List<String> cautions;
-
-        if (calculationAvailable) {
-            cautions = List.of(
-                    "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
-            );
-        } else {
-            cautions = List.of(
-                    "가입일 또는 치료일을 확인하지 못해 조건별 금액 후보를 모두 안내했어요.",
-                    "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
-            );
-        }
+        List<String> cautions =
+                buildAmountCautions(
+                        calculationAvailable,
+                        responseAmounts
+                );
 
         AmountGuideResponse amountGuide =
                 AmountGuideResponse.builder()
                         .calculationAvailable(
                                 calculationAvailable
                         )
-                        .estimatedItems(
-                                responseAmounts.stream()
-                                        .map(amount ->
-                                                AmountGuideResponse.EstimatedItem.builder()
-                                                        .coverageName(
-                                                                surgeryItem.coverageName()
-                                                        )
-                                                        .amountText(
-                                                                amount == null
-                                                                        || amount.coverageAmount() == null
-                                                                        ? "약관 확인 필요"
-                                                                        : String.format(
-                                                                        "%,d원",
-                                                                        amount.coverageAmount()
-                                                                )
-                                                        )
-                                                        .reason(
-                                                                buildAmountReason(
-                                                                        amount,
-                                                                        request
-                                                                )
-                                                        )
-                                                        .build()
-                                        )
-                                        .toList()
-                        )
+                        .estimatedItems(estimatedItems)
                         .cautions(cautions)
                         .build();
 
@@ -321,14 +299,79 @@ public class SurgeryAnswerGenerator {
     }
 
     // 예상 보험금 산정 이유 문구 생성
-    private String buildAmountReason(CoverageAmountDto amount, ChatMessageRequest request) {
-        if (amount == null || amount.condition() == null || amount.condition().isBlank()
+    private String buildAmountReason(
+            CoverageAmountDto amount,
+            ChatMessageRequest request
+    ) {
+        if (amount == null || amount.coverageAmount() == null) {
+            return "수술명과 약관상 수술 분류를 확인해야 예상 금액을 계산할 수 있어요.";
+        }
+
+        if (amount.condition() == null
+                || amount.condition().isBlank()
                 || "조건없음".equals(amount.condition())) {
             return getIncidentRecognitionDescription(request)
                     + " 인정되고, 수술명이 약관상 지급 조건에 해당하면 지급 후보가 될 수 있어요.";
         }
 
-        return amount.condition() + " 조건 기준으로 확인된 금액이에요.";
+        return amount.condition()
+                + " 조건을 적용한 예상 금액이에요.";
+    }
+
+    private List<CoverageAmountDto> resolveResponseAmounts(
+            CoverageItemDto surgeryItem,
+            CoverageAmountDto applicableAmount
+    ) {
+        if (applicableAmount != null) {
+            return List.of(applicableAmount);
+        }
+
+        if (!hasDifferentAmounts(surgeryItem)) {
+            return List.of(surgeryItem.amounts().get(0));
+        }
+
+        return surgeryItem.amounts();
+    }
+
+    private String buildAmountText(CoverageAmountDto amount) {
+        if (amount == null || amount.coverageAmount() == null) {
+            return "금액 확인 필요";
+        }
+
+        return String.format(
+                "%,d원",
+                amount.coverageAmount()
+        );
+    }
+
+    private List<String> buildAmountCautions(
+            boolean calculationAvailable,
+            List<CoverageAmountDto> responseAmounts
+    ) {
+        if (calculationAvailable) {
+            return List.of(
+                    "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+            );
+        }
+
+        boolean amountMissing = responseAmounts.stream()
+                .anyMatch(amount ->
+                        amount == null
+                                || amount.coverageAmount() == null
+                );
+
+        if (amountMissing) {
+            return List.of(
+                    "증권 분석 결과에서 수술 보장금액이 확인되지 않았어요.",
+                    "수술명과 약관상 수술 분류를 확인해야 정확한 금액을 계산할 수 있어요.",
+                    "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+            );
+        }
+
+        return List.of(
+                "가입일 또는 치료일을 확인하지 못해 조건별 금액 후보를 안내했어요.",
+                "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요."
+        );
     }
 
     // 입력된 사고 유형과 자유입력에 맞는 수술비 항목 찾기

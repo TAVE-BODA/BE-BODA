@@ -211,12 +211,8 @@ public class CastAnswerGenerator {
             );
         }
 
-        CoverageAmountDto amount = null;
-
-        if (castItem.amounts() != null
-                && !castItem.amounts().isEmpty()) {
-            amount = castItem.amounts().get(0);
-        }
+        CoverageAmountDto amount =
+                findCastAmount(castItem);
 
         // 보장은 있지만 금액이 없는 경우
         if (amount == null || amount.coverageAmount() == null) {
@@ -277,17 +273,18 @@ public class CastAnswerGenerator {
     ) {
         String amountText = "";
 
-        if (item.amounts() != null && !item.amounts().isEmpty()) {
-            CoverageAmountDto amount = item.amounts().get(0);
+        CoverageAmountDto amount =
+                findCastAmount(item);
 
-            if (amount.coverageAmount() != null) {
-                amountText = String.format(
-                        "- %s: %s %,d원\n",
-                        item.coverageName(),
-                        amount.condition(),
-                        amount.coverageAmount()
-                );
-            }
+        if (amount != null
+                && amount.coverageAmount() != null) {
+
+            amountText = String.format(
+                    "- %s: %s %,d원\n",
+                    item.coverageName(),
+                    buildCastAmountCondition(amount),
+                    amount.coverageAmount()
+            );
         }
 
         StringBuilder answer = new StringBuilder();
@@ -327,11 +324,12 @@ public class CastAnswerGenerator {
                     + "입력하신 치료가 반깁스·부목에 해당한다면 지급 대상에서 제외될 수 있습니다.";
         }
 
-        if (item.amounts() == null || item.amounts().isEmpty()) {
+        CoverageAmountDto amount =
+                findCastAmount(item);
+
+        if (amount == null) {
             return "깁스 치료 보장은 확인됐지만, 예상 보험금 금액은 확인되지 않았어요.";
         }
-
-        CoverageAmountDto amount = item.amounts().get(0);
 
         if (amount.coverageAmount() == null) {
             return "깁스 치료 보장은 확인됐지만, 예상 보험금 금액은 약관 확인이 필요해요.";
@@ -347,7 +345,7 @@ public class CastAnswerGenerator {
                 .append("- ")
                 .append(item.coverageName())
                 .append(": ")
-                .append(amount.condition())
+                .append(buildCastAmountCondition(amount))
                 .append(" ")
                 .append(String.format("%,d원", amount.coverageAmount()))
                 .append("\n");
@@ -433,19 +431,53 @@ public class CastAnswerGenerator {
     }
 
     private String buildCastAmountReason(CoverageItemDto item) {
-        if (item.amounts() == null || item.amounts().isEmpty()) {
-            return null;
-        }
+        CoverageAmountDto amount =
+                findCastAmount(item);
 
-        CoverageAmountDto amount = item.amounts().get(0);
-
-        if (amount.coverageAmount() == null) {
+        if (amount == null
+                || amount.coverageAmount() == null) {
             return null;
         }
 
         return "깁스 치료 시 "
                 + String.format("%,d원", amount.coverageAmount())
                 + "의 보장금액이 확인됐어요.";
+    }
+
+    // 복합 특약의 여러 금액 중 깁스 치료 금액만 선택
+    private CoverageAmountDto findCastAmount(
+            CoverageItemDto item
+    ) {
+        if (item == null
+                || item.amounts() == null
+                || item.amounts().isEmpty()) {
+            return null;
+        }
+
+        CoverageAmountDto matchedAmount =
+                item.amounts()
+                        .stream()
+                        .filter(amount ->
+                                amount != null
+                                        && amount.condition() != null
+                                        && normalize(
+                                        amount.condition()
+                                ).contains("깁스")
+                        )
+                        .findFirst()
+                        .orElse(null);
+
+        if (matchedAmount != null) {
+            return matchedAmount;
+        }
+
+        // 깁스 단일 보장은 condition이 '조건없음'으로 저장될 수 있음
+        if (item.amounts().size() == 1) {
+            return item.amounts().get(0);
+        }
+
+        // 복합 특약에서 깁스 조건을 찾지 못하면 다른 보장 금액을 사용하지 않음
+        return null;
     }
 
     private String buildCastAmountCondition(
@@ -455,6 +487,11 @@ public class CastAnswerGenerator {
                 || amount.condition().isBlank()
                 || "조건없음".equals(amount.condition())) {
             return "1회";
+        }
+
+        if (normalize(amount.condition())
+                .contains("1회당")) {
+            return "1회당";
         }
 
         return amount.condition();
@@ -478,6 +515,20 @@ public class CastAnswerGenerator {
         return cautions;
     }
 
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+                .toLowerCase()
+                .replaceAll("\\s+", "")
+                .replace("(", "")
+                .replace(")", "")
+                .replace("·", "")
+                .replace("-", "");
+    }
+
     private record CastCoverageMatch(
             CoverageItemDto item,
             String exclusionKeywords
@@ -498,5 +549,4 @@ public class CastAnswerGenerator {
         }
     }
 }
-
 

@@ -3,24 +3,31 @@ package com.codit.be_boda.chat.service.answer;
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.repository.TermsChunkQueryRepository;
+import com.codit.be_boda.chat.repository.TermsChunkQueryRepository.TermsChunkInfo;
 import com.codit.be_boda.chat.service.AnswerSource;
 import com.codit.be_boda.chat.type.TreatmentType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
 public class ClaimEvidenceFinder {
 
+    // 중복 조항 제거를 위해 먼저 넓게 검색
+    private static final int CLAIM_SEARCH_LIMIT = 30;
+
     // 칩1 전체 근거 개수
-    private static final int SOURCE_LIMIT = 6;
+    private static final int SOURCE_LIMIT = 2;
 
     // 칩2 카드 한 개당 근거 개수
-    private static final int SOURCE_LIMIT_PER_ITEM = 2;
+    private static final int SOURCE_LIMIT_PER_ITEM = 1;
 
     private final TermsChunkQueryRepository termsChunkQueryRepository;
 
@@ -43,12 +50,18 @@ public class ClaimEvidenceFinder {
             return List.of();
         }
 
-        return termsChunkQueryRepository
-                .findByTermsDocumentIdAndKeywords(
-                        termsDocumentId,
-                        keywords,
-                        SOURCE_LIMIT
-                )
+        List<TermsChunkInfo> searchedChunks =
+                termsChunkQueryRepository
+                        .findClaimByTermsDocumentIdAndKeywords(
+                                termsDocumentId,
+                                keywords,
+                                CLAIM_SEARCH_LIMIT
+                        );
+
+        return deduplicateByClause(
+                searchedChunks,
+                SOURCE_LIMIT
+        )
                 .stream()
                 .map(chunk -> new AnswerSource(
                         chunk.chunkId(),
@@ -56,6 +69,68 @@ public class ClaimEvidenceFinder {
                         null
                 ))
                 .toList();
+    }
+
+    // 하나의 조항이 여러 청크로 나뉘 경우 제거
+    private List<TermsChunkInfo> deduplicateByClause(
+            List<TermsChunkInfo> chunks,
+            int limit
+    ) {
+        if (chunks == null || chunks.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, TermsChunkInfo> uniqueChunks =
+                new LinkedHashMap<>();
+
+        for (TermsChunkInfo chunk : chunks) {
+            if (chunk == null || chunk.chunkId() == null) {
+                continue;
+            }
+
+            uniqueChunks.putIfAbsent(
+                    buildClauseKey(chunk),
+                    chunk
+            );
+        }
+
+        return new ArrayList<>(
+                uniqueChunks.values()
+        )
+                .stream()
+                .limit(limit)
+                .toList();
+    }
+
+    private String buildClauseKey(
+            TermsChunkInfo chunk
+    ) {
+        if (chunk.clauseId() != null) {
+            return "CLAUSE_ID:"
+                    + chunk.clauseId();
+        }
+
+        String clauseKey = normalize(
+                safe(chunk.clauseNo())
+                        + safe(chunk.clauseTitle())
+        );
+
+        if (!clauseKey.isBlank()) {
+            return "CLAUSE:" + clauseKey;
+        }
+
+        String sectionKey =
+                normalize(chunk.sectionTitle());
+
+        if (!sectionKey.isBlank()) {
+            return "SECTION:" + sectionKey;
+        }
+
+        return "CHUNK_ID:" + chunk.chunkId();
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 
     /**
