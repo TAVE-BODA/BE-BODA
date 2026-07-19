@@ -15,6 +15,9 @@ public enum ErrorCode {
     ANALYSIS_NOT_DONE(HttpStatus.CONFLICT, "ANALYSIS_NOT_DONE", "아직 증권 분석이 완료되지 않았습니다."),
 
     CHAT_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAT_SESSION_NOT_FOUND", "존재하지 않는 채팅방입니다."),
+    CHAT_SESSION_FORBIDDEN(HttpStatus.FORBIDDEN, "CHAT_SESSION_FORBIDDEN", "본인의 채팅방만 삭제할 수 있습니다."),
+
+    POLICY_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "POLICY_LIMIT_EXCEEDED", "한 채팅방에는 증권을 최대 3개까지 연결할 수 있습니다."),
 
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다.");
 
