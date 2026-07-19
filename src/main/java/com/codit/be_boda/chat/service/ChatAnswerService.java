@@ -790,10 +790,15 @@ public class ChatAnswerService {
             );
         }
 
+        cautions = prioritizeAndLimitAmountCautions(
+                cautions,
+                4
+        );
+
         AmountGuideResponse amountGuide =
                 AmountGuideResponse.builder()
                         .calculationAvailable(
-                                allCalculationAvailable
+                                anyCalculationAvailable
                         )
                         .estimatedItems(estimatedItems)
                         .cautions(cautions)
@@ -803,6 +808,52 @@ public class ChatAnswerService {
                 messageContent.toString().trim(),
                 amountGuide
         );
+    }
+
+    private List<String> prioritizeAndLimitAmountCautions(
+            List<String> cautions,
+            int limit
+    ) {
+        if (cautions == null || cautions.isEmpty() || limit <= 0) {
+            return List.of();
+        }
+
+        List<String> result = new ArrayList<>();
+        List<String> priorityKeywords = List.of(
+                "일부 치료 항목",
+                "입력하신",
+                "실제 인정 입원일수",
+                "현재 증권 분석 결과",
+                "실제 지급 여부"
+        );
+
+        for (String keyword : priorityKeywords) {
+            cautions.stream()
+                    .filter(caution ->
+                            caution != null
+                                    && caution.contains(keyword)
+                                    && !result.contains(caution)
+                    )
+                    .findFirst()
+                    .ifPresent(result::add);
+
+            if (result.size() >= limit) {
+                return List.copyOf(result);
+            }
+        }
+
+        for (String caution : cautions) {
+            if (caution != null
+                    && !result.contains(caution)) {
+                result.add(caution);
+            }
+
+            if (result.size() >= limit) {
+                break;
+            }
+        }
+
+        return List.copyOf(result);
     }
 
     private boolean hasTreatmentType(
