@@ -412,9 +412,18 @@ public class HospitalizationAnswerGenerator {
         }
 
         if (roomType == RoomType.PRIVATE_ROOM) {
-            return hospitalType == HospitalType.TERTIARY_HOSPITAL
-                    && coverageName.contains("상급")
-                    && coverageName.contains("1인실");
+            if (hospitalType == HospitalType.GENERAL_HOSPITAL) {
+                return coverageName.contains("1인실")
+                        && coverageName.contains("종합병원이상")
+                        && !coverageName.contains("상급종합병원");
+            }
+
+            if (hospitalType == HospitalType.TERTIARY_HOSPITAL) {
+                return coverageName.contains("1인실")
+                        && coverageName.contains("상급종합병원");
+            }
+
+            return false;
         }
 
         if (roomType == RoomType.GENERAL_ROOM) {
