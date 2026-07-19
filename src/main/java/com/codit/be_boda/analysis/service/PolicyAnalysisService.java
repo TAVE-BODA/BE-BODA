@@ -110,6 +110,7 @@ public class PolicyAnalysisService {
                     .maskedText(extracted.text())
                     .build();
 
+
             policyAnalysisRepository.save(analysis);
             analyses.add(analysis);
 
