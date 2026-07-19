@@ -709,6 +709,8 @@ public class ChatAnswerService {
 
         boolean anyCalculationAvailable = false;
         boolean allCalculationAvailable = true;
+        boolean hasUnresolvedAmountCandidate = false;
+        long mergedTotalAmount = 0L;
 
         for (TreatmentAmountResult treatmentResult : results) {
             String treatmentLabel =
@@ -766,6 +768,16 @@ public class ChatAnswerService {
                                     )
                                     .build()
                     );
+
+                    Long parsedAmount = parseWonAmount(
+                            item.getAmountText()
+                    );
+
+                    if (parsedAmount != null) {
+                        mergedTotalAmount += parsedAmount;
+                    } else if (!calculationAvailable) {
+                        hasUnresolvedAmountCandidate = true;
+                    }
                 }
             }
 
@@ -782,7 +794,8 @@ public class ChatAnswerService {
 
         // 일부 치료만 계산 가능한 경우
         if (anyCalculationAvailable
-                && !allCalculationAvailable) {
+                && !allCalculationAvailable
+                && hasUnresolvedAmountCandidate) {
 
             cautions.add(
                     0,
@@ -794,6 +807,13 @@ public class ChatAnswerService {
                 cautions,
                 4
         );
+
+        if (mergedTotalAmount > 0L) {
+            messageContent.append("[전체 합계]\n")
+                    .append("예상 보험금은 총 약 ")
+                    .append(String.format("%,d원", mergedTotalAmount))
+                    .append("이에요.");
+        }
 
         AmountGuideResponse amountGuide =
                 AmountGuideResponse.builder()
@@ -808,6 +828,25 @@ public class ChatAnswerService {
                 messageContent.toString().trim(),
                 amountGuide
         );
+    }
+
+    private Long parseWonAmount(
+            String amountText
+    ) {
+        if (amountText == null
+                || !amountText.trim().matches("[0-9,]+원")) {
+            return null;
+        }
+
+        try {
+            return Long.parseLong(
+                    amountText.replace(",", "")
+                            .replace("원", "")
+                            .trim()
+            );
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private List<String> prioritizeAndLimitAmountCautions(

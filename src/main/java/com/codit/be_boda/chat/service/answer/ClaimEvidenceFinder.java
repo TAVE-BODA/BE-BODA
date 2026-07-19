@@ -304,6 +304,7 @@ public class ClaimEvidenceFinder {
         addIfContained(concepts, normalizedName, "입원");
         addIfContained(concepts, normalizedName, "상급병실");
         addIfContained(concepts, normalizedName, "1인실");
+        addIfContained(concepts, normalizedName, "종합병원이상");
         addIfContained(concepts, normalizedName, "종합병원");
         addIfContained(concepts, normalizedName, "상급종합병원");
         addIfContained(concepts, normalizedName, "통원");

@@ -46,11 +46,7 @@ public class AsyncPolicyAnalysisService {
     @Transactional
     public void analyzeAsync(PolicyAnalysis analysis, Long chatSessionId) {
         long start = System.currentTimeMillis();
-        log.info(
-                "[ANALYSIS] 증권 비동기 분석 시작 | analysisId={} | chatSessionId={}",
-                analysis.getId(),
-                chatSessionId
-        );
+        log.info("[ANALYSIS] 증권 비동기 분석 시작 | analysisId={}", analysis.getId());
         analysis.startAnalysis();
         policyAnalysisRepository.save(analysis);
 
@@ -59,11 +55,11 @@ public class AsyncPolicyAnalysisService {
 
             log.info("[ANALYSIS] 증권 기본 정보 추출 완료 | {}ms", System.currentTimeMillis() - start);
 
-//          보장 카드를 먼저 저장(모든 증권에 대해 분석 완료되기 전까지 DONE로 바꾸지 않기)
+//          보장 카드를 먼저 저장(모든 증권에 대해 분석 완료되기 전까지 COMPLETE로 바꾸지 않기)
             createCoverageCards(analysis);
             log.info("[ANALYSIS] 보장 카드 생성 완료 | {}ms", System.currentTimeMillis() - start);
 
-//          모든 카드의 저장이 끝난 후 분석 상태를 DONE로 변경
+//          모든 카드의 저장이 끝난 후 분석 상태를 COMPLETE로 변경
             analysis.completeAnalysis(extractedData);
 
 
@@ -356,6 +352,12 @@ public class AsyncPolicyAnalysisService {
                     골절·재해 보장은 재해로 인한 골절, 화상, 장해, 깁스 치료, 골절 수술 등에 대해 지급되는 보장이야.
                     증권에 여러 보장항목이 나열되어 있으면 하나로 합치지 말고 각각 별도의 item으로 분리해.
                     예: "재해골절 진단", "5대 재해골절 진단", "재해골절 수술", "재해 화상", "재해 장해", "깁스(Cast) 치료"는 각각 다른 item으로 생성한다.
+
+                    담보명과 보장금액은 반드시 같은 번호 또는 같은 보장 블록에서 추출해.
+                    특히 "재해골절 진단"과 "5대 재해골절 진단"은 서로 다른 담보이므로 인접한 위·아래 행의 금액을 서로 바꾸어 연결하면 안 돼.
+                    예를 들어 원문에서 재해골절진단보험금이 300,000원이고 5대재해골절진단보험금이 700,000원이면 각각의 coverageName에 그 금액을 그대로 연결해.
+                    현재 담보의 금액을 같은 블록에서 확실히 확인할 수 없으면 다른 골절 담보의 금액을 추측해서 사용하지 말고 coverageAmount를 null로 작성해.
+                    JSON을 반환하기 전에 "재해골절 진단", "5대 재해골절 진단", "재해골절 수술", "깁스(Cast) 치료"의 이름과 금액이 원문의 동일한 번호 항목에 있는지 다시 검증해.
                     
                     골절·재해 보장에서 치아파절 제외, 현저한 추상, 추상, 장해율 조건, 80% 이상 조건 등이 있으면 coverageName에 포함하여 구분한다.
                     예: "재해골절 진단 (치아 파절 제외)", "재해 화상 — 현저한 추상", "재해 장해 (80% 이상)"처럼 작성해줘.
