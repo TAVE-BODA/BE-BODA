@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +31,7 @@ public class MypageService {
     private final ChatSessionPolicyRepository chatSessionPolicyRepository;
     private final DashboardRepository dashboardRepository;
     private final ChatSessionRepository chatSessionRepository;
+
 
     public MypageResponse getMyPage(Long userId) {
         User user = userRepository.findById(userId)
@@ -67,6 +69,14 @@ public class MypageService {
                         .map(ChatSessionPolicy::getChatSessionId)
                         .orElse(null); //채팅방이 없다면 null을 반환(없지 않겠지만)
 
+
+//      증권 분석이 완료된 일자
+        LocalDate analysisCompletedAt =
+                analysis.getCompletedAt() != null
+                        ? analysis.getCompletedAt().toLocalDate()
+                        : null;
+
+
 //      대시보드 존재 여부 확인(증권 분석이 완료되었다면 대시보드는 자동으로 생성되었을 것)
         boolean dashboardAvailable =
                 existingChatSessionId != null
@@ -74,9 +84,8 @@ public class MypageService {
                         existingChatSessionId
                 );
 
-//      약관 테이브(terms_document)에 해당 증권의 유무로 약관의 유무를 판단
-        boolean termsUploaded =
-                termsDocumentRepository.existsByAnalysisId(analysisId);
+//      약관 테이블(terms_document)에 해당 증권의 유무로 약관의 유무를 판단
+        boolean termsUploaded = isTermsUpload(analysisId);
 
         // TODO: 조건입력 데이터 저장 위치 확정 후 실제 조회
         boolean conditionCompleted = false;
@@ -87,6 +96,7 @@ public class MypageService {
         return new MypageInsuranceResponse(
                 analysisId,
                 companyName,
+                analysisCompletedAt,
                 dashboardAvailable,
                 termsUploaded,
                 conditionCompleted,
@@ -95,6 +105,7 @@ public class MypageService {
         );
     }
 
+// 보험사명 추출
     private String extractCompanyName(
             PolicyAnalysis analysis
     ) {
@@ -114,4 +125,22 @@ public class MypageService {
 
         return companyName.toString();
     }
+
+    // 약관 유무 판단
+    private boolean isTermsUpload(Long analysisId){
+
+        return chatSessionPolicyRepository
+                .findByAnalysisId(analysisId)
+                .flatMap(sessionPolicy ->
+                        chatSessionRepository.findById(
+                                sessionPolicy.getChatSessionId()
+                        )
+                )
+                .map(chatSession ->
+                        chatSession.getTermsDocumentId() != null
+                )
+                .orElse(false);
+    }
+
 }
+
