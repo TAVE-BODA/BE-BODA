@@ -248,10 +248,17 @@ public class ChatService {
             ChatMessageSourceRepository.MessageSourceInfo source,
             QuestionType questionType
     ) {
+        String citedText = buildCitedText(source);
+
+        if (questionType == QuestionType.CHIP_CLAIM
+                && isDentalExtractionExclusionSource(citedText)) {
+            return "보장 대상이 되지 않는 영구치 발치의 원인";
+        }
+
         // 모든 질문 유형에서 실제 근거 본문의 조항명을 가장 먼저 사용
         String contentTitle =
                 extractSourceTitleFromText(
-                        buildCitedText(source)
+                        citedText
                 );
 
         if (contentTitle != null
@@ -260,6 +267,23 @@ public class ChatService {
         }
 
         return buildMetadataSourceTitle(source);
+    }
+
+    private boolean isDentalExtractionExclusionSource(
+            String citedText
+    ) {
+        if (citedText == null || citedText.isBlank()) {
+            return false;
+        }
+
+        String normalizedText = citedText
+                .replaceAll("\\s+", "")
+                .replace("(", "")
+                .replace(")", "");
+
+        return normalizedText.contains("제3대구치사랑니를발치")
+                || normalizedText.contains("부분매복되거나,완전매복되어발치")
+                || normalizedText.contains("부분매복되거나완전매복되어발치");
     }
 
     private String extractSourceTitleFromText(String citedText) {

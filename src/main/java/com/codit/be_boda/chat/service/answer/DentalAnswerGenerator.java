@@ -162,6 +162,78 @@ public class DentalAnswerGenerator {
         return new ClaimAnswerResult(messageContent, claimGuide);
     }
 
+    // 약관에서 사랑니·제3대구치·매복치 발치 제외가 확인된 경우
+    public ClaimAnswerResult generateExcludedDentalClaimAnswer(
+            ChatMessageRequest request
+    ) {
+        String message = request.getMessage() == null
+                ? ""
+                : normalize(request.getMessage());
+
+        boolean wisdomTooth =
+                message.contains("사랑니")
+                        || message.contains("제3대구치");
+
+        boolean impactedTooth =
+                message.contains("매복치")
+                        || message.contains("매몰치")
+                        || message.contains("부분매복")
+                        || message.contains("완전매복")
+                        || message.contains("매복");
+
+        List<String> reasons = new ArrayList<>();
+
+        if (wisdomTooth) {
+            reasons.add(
+                    "약관에서는 제3대구치인 사랑니를 보장 대상 영구치에서 제외하고 있어요."
+            );
+        }
+
+        if (impactedTooth) {
+            reasons.add(
+                    "부분매복 또는 완전매복 등 맹출장애로 인한 발치는 영구치발치보험금의 보장 대상이 아니에요."
+            );
+        }
+
+        if (reasons.isEmpty()) {
+            reasons.add(
+                    "입력하신 발치 사유가 약관에서 정한 보장 제외 조건에 해당해요."
+            );
+        }
+
+        String messageContent =
+                "이번 치아 발치는 약관상 보장 대상에서 제외돼요.\n\n"
+                        + "[확인된 제외 조건]\n- "
+                        + String.join("\n- ", reasons);
+
+        String excludedTreatment =
+                wisdomTooth && impactedTooth
+                        ? "매복 사랑니"
+                        : wisdomTooth
+                          ? "사랑니"
+                          : "매복치";
+
+        ClaimGuideResponse claimGuide =
+                ClaimGuideResponse.builder()
+                        .claimStatus("NOT_AVAILABLE")
+                        .summary(
+                                "이번 "
+                                        + excludedTreatment
+                                        + " 발치는 치아치료 보장 대상에서 제외돼요."
+                        )
+                        .reasons(reasons)
+                        .cautions(List.of(
+                                "사랑니나 매복치가 아닌 다른 영구치의 발치는 원인과 보장개시일에 따라 보장 여부가 달라질 수 있어요.",
+                                "최종 지급 여부는 보험사의 심사 결과에 따라 달라질 수 있어요."
+                        ))
+                        .build();
+
+        return new ClaimAnswerResult(
+                messageContent,
+                claimGuide
+        );
+    }
+
     // CHIP_AMOUNT 중 DENTAL 처리
     public String generateAmountAnswer(Long analysisId, ChatMessageRequest request) {
         DentalInfoRequest dentalInfo = request.getDentalInfo();

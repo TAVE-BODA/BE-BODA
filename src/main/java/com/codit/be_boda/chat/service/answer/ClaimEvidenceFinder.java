@@ -5,6 +5,7 @@ import com.codit.be_boda.chat.dto.response.AmountGuideResponse;
 import com.codit.be_boda.chat.repository.TermsChunkQueryRepository;
 import com.codit.be_boda.chat.repository.TermsChunkQueryRepository.TermsChunkInfo;
 import com.codit.be_boda.chat.service.AnswerSource;
+import com.codit.be_boda.chat.type.DentalTreatmentType;
 import com.codit.be_boda.chat.type.TreatmentType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -25,6 +26,9 @@ public class ClaimEvidenceFinder {
 
     // 칩1 전체 근거 개수
     private static final int SOURCE_LIMIT = 2;
+
+    // 사랑니·매복치 제외 판단은 가장 직접적인 근거 한 개만 노출
+    private static final int DENTAL_EXCLUSION_SOURCE_LIMIT = 1;
 
     // 칩2 카드 한 개당 근거 개수
     private static final int SOURCE_LIMIT_PER_ITEM = 1;
@@ -69,6 +73,111 @@ public class ClaimEvidenceFinder {
                         null
                 ))
                 .toList();
+    }
+
+    /**
+     * 사랑니·제3대구치·매복치 발치에 해당하는 약관 제외 근거 검색
+     */
+    public List<AnswerSource> findDentalExclusionSources(
+            Long termsDocumentId,
+            ChatMessageRequest request
+    ) {
+        if (termsDocumentId == null
+                || !isWisdomToothOrImpactedRequest(
+                request
+        )) {
+            return List.of();
+        }
+
+        List<String> keywords = List.of(
+                "사랑니",
+                "제3대구치",
+                "매복치",
+                "매몰치",
+                "맹출장애"
+        );
+
+        List<TermsChunkInfo> searchedChunks =
+                termsChunkQueryRepository
+                        .findClaimByTermsDocumentIdAndKeywords(
+                                termsDocumentId,
+                                keywords,
+                                CLAIM_SEARCH_LIMIT
+                        );
+
+        return deduplicateByClause(
+                searchedChunks.stream()
+                        .filter(
+                                this::isDentalExclusionChunk
+                        )
+                        .toList(),
+                DENTAL_EXCLUSION_SOURCE_LIMIT
+        )
+                .stream()
+                .map(chunk -> new AnswerSource(
+                        chunk.chunkId(),
+                        null,
+                        null
+                ))
+                .toList();
+    }
+
+    private boolean isWisdomToothOrImpactedRequest(
+            ChatMessageRequest request
+    ) {
+        if (request == null
+                || request.getMessage() == null
+                || request.getTreatmentTypes() == null
+                || !request.getTreatmentTypes().contains(
+                TreatmentType.DENTAL
+        )
+                || request.getDentalInfo() == null
+                || request.getDentalInfo()
+                .getDentalTreatmentTypes() == null
+                || !request.getDentalInfo()
+                .getDentalTreatmentTypes()
+                .contains(
+                        DentalTreatmentType.EXTRACTION
+                )) {
+            return false;
+        }
+
+        String message = normalize(
+                request.getMessage()
+        );
+
+        return message.contains("사랑니")
+                || message.contains("제3대구치")
+                || message.contains("매복치")
+                || message.contains("매몰치")
+                || message.contains("부분매복")
+                || message.contains("완전매복");
+    }
+
+    private boolean isDentalExclusionChunk(
+            TermsChunkInfo chunk
+    ) {
+        String text = normalize(
+                safe(chunk.clauseNo())
+                        + safe(chunk.clauseTitle())
+                        + safe(chunk.sectionTitle())
+                        + safe(chunk.chunkText())
+        );
+
+        boolean containsExcludedDentalCondition =
+                text.contains("사랑니")
+                        || text.contains("제3대구치")
+                        || text.contains("매복치")
+                        || text.contains("매몰치")
+                        || text.contains("맹출장애");
+
+        boolean containsExclusionMeaning =
+                text.contains("제외")
+                        || text.contains("보장의대상이되지않")
+                        || text.contains("지급하지않");
+
+        return containsExcludedDentalCondition
+                && containsExclusionMeaning;
     }
 
     // 하나의 조항이 여러 청크로 나뉘 경우 제거

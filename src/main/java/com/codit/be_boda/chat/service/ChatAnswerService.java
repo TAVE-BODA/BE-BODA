@@ -83,14 +83,27 @@ public class ChatAnswerService {
         // 칩1: 청구 가능 여부
         if (questionType == QuestionType.CHIP_CLAIM) {
 
+            List<AnswerSource> dentalExclusionSources =
+                    claimEvidenceFinder
+                            .findDentalExclusionSources(
+                                    chatSession.getTermsDocumentId(),
+                                    request
+                            );
+
+            boolean dentalExclusionDetected =
+                    !dentalExclusionSources.isEmpty();
+
             ClaimAnswerResult result =
                     generateClaimAnswerResult(
                             analysisId,
-                            request
+                            request,
+                            dentalExclusionDetected
                     );
 
             List<AnswerSource> sources =
-                    claimEvidenceFinder.findSources(
+                    dentalExclusionDetected
+                            ? dentalExclusionSources
+                            : claimEvidenceFinder.findSources(
                             chatSession.getTermsDocumentId(),
                             request
                     );
@@ -224,7 +237,8 @@ public class ChatAnswerService {
     // CHIP_CLAIM 구조화 응답 생성
     private ClaimAnswerResult generateClaimAnswerResult(
             Long analysisId,
-            ChatMessageRequest request
+            ChatMessageRequest request,
+            boolean dentalExclusionDetected
     ) {
         List<TreatmentType> treatmentTypes =
                 request.getTreatmentTypes();
@@ -247,7 +261,8 @@ public class ChatAnswerService {
             return generateSingleClaimAnswerResult(
                     analysisId,
                     request,
-                    treatmentTypes.get(0)
+                    treatmentTypes.get(0),
+                    dentalExclusionDetected
             );
         }
 
@@ -258,7 +273,8 @@ public class ChatAnswerService {
                         generateSingleClaimAnswerResult(
                                 analysisId,
                                 request,
-                                treatmentType
+                                treatmentType,
+                                dentalExclusionDetected
                         )
                 ))
                 .toList();
@@ -270,7 +286,8 @@ public class ChatAnswerService {
     private ClaimAnswerResult generateSingleClaimAnswerResult(
             Long analysisId,
             ChatMessageRequest request,
-            TreatmentType treatmentType
+            TreatmentType treatmentType,
+            boolean dentalExclusionDetected
     ) {
         return switch (treatmentType) {
             case CAST ->
@@ -292,10 +309,16 @@ public class ChatAnswerService {
                     );
 
             case DENTAL ->
-                    dentalAnswerGenerator.generateStructuredClaimAnswer(
-                            analysisId,
-                            request
-                    );
+                    dentalExclusionDetected
+                            ? dentalAnswerGenerator
+                              .generateExcludedDentalClaimAnswer(
+                                      request
+                              )
+                            : dentalAnswerGenerator
+                              .generateStructuredClaimAnswer(
+                                      analysisId,
+                                      request
+                              );
 
             case DIAGNOSIS_ONLY ->
                     diagnosisAnswerGenerator.generateStructuredClaimAnswer(
