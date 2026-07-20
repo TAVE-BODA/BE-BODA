@@ -104,18 +104,21 @@ public class PdfExtractService {
         if (name == null || !name.toLowerCase().endsWith(".pdf"))
             return fail("NOT_PDF", "PDF 파일만 올릴 수 있어요.");
 
+        String text;
         try {
-            String text = extractWithPdfBox(file);
-            if (text == null || text.trim().length() < MIN_TEXT_LENGTH)
-                return fail("LOW_QUALITY", "약관은 텍스트 PDF만 지원해요. 보험사 홈페이지에서 받아봐요.");
-
-            log.info("[PDF] 약관 추출 완료 | 길이={}", text.trim().length());
-            return new ExtractResult(true, false, mask(text.trim()), null, null);
-
+            // PDF 로드 자체 실패(손상된 파일) → PARSE_ERROR
+            // 로드는 됐는데 텍스트가 부족(스캔 PDF) → LOW_QUALITY 로 구분한다
+            text = extractWithPdfBoxStrict(file);
         } catch (Exception e) {
-            log.error("[PDF] 약관 추출 실패 | {}", e.getMessage());
-            return fail("PARSE_ERROR", "파일을 읽을 수 없어요. 다시 시도해주세요.");
+            log.error("[PDF] 약관 PDF 로드 실패 | {}", e.getMessage());
+            return fail("PARSE_ERROR", "PDF 파일을 읽을 수 없어요. 파일이 손상되지 않았는지 확인해주세요.");
         }
+
+        if (text == null || text.trim().length() < MIN_TEXT_LENGTH)
+            return fail("LOW_QUALITY", "약관은 텍스트 PDF만 지원해요. 보험사 홈페이지에서 받아봐요.");
+
+        log.info("[PDF] 약관 추출 완료 | 길이={}", text.trim().length());
+        return new ExtractResult(true, false, mask(text.trim()), null, null);
     }
 
     // PDFBox추출 시작.
@@ -153,6 +156,17 @@ public class PdfExtractService {
         } catch (Exception e) {
             log.warn("[PDF] PDFBox 추출 실패 (이미지 PDF일 수 있음) | {}", e.getMessage());
             return null;
+        }
+    }
+
+    // 약관용: PDF 로드 실패를 삼키지 않고 그대로 던진다
+    // (기존 extractWithPdfBox는 예외를 null로 바꿔서 손상 파일도 LOW_QUALITY로 떨어졌음)
+    private String extractWithPdfBoxStrict(MultipartFile file) throws IOException {
+        try (var is = file.getInputStream();
+             PDDocument doc = Loader.loadPDF(new RandomAccessReadBuffer(is))) {
+            String text = new PDFTextStripper().getText(doc);
+            log.info("[PDF] PDFBox(strict) 추출 결과 길이={}", text == null ? 0 : text.trim().length());
+            return text;
         }
     }
 

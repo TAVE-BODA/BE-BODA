@@ -14,6 +14,9 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatSessionPolicy {
 
+    // 한 채팅방에 연결 가능한 증권 최대 개수 (기획: 증권 1~3개, 약관 0~1개)
+    public static final int MAX_PER_SESSION = 3;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

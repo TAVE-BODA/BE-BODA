@@ -10,6 +10,9 @@ import java.util.List;
 
 public interface ChatMessageSourceRepository extends JpaRepository<ChatMessageSource, Long> {
 
+    // 채팅방 삭제 시 사용 (chat_message 보다 먼저 지워야 FK 위반이 나지 않음)
+    void deleteByMessageIdIn(List<Long> messageIds);
+
     // 여러 메시지 중 약관 근거가 저장된 메시지 ID만 한 번에 조회
     @Query(value = """
             SELECT DISTINCT cms.message_id

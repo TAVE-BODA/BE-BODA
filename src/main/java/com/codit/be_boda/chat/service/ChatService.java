@@ -63,6 +63,47 @@ public class ChatService {
     private final ChatMessageRequestValidator chatMessageRequestValidator;
     private final ChatAnswerService chatAnswerService;
     private final ChatMessageSourceRepository chatMessageSourceRepository;
+    private final com.codit.be_boda.dashboard.repository.DashboardRepository dashboardRepository;
+
+    // 채팅방 삭제
+    // 삭제 순서(FK 역방향): 답변 근거 → 메시지 → 채팅방-증권 연결 → 대시보드 → 채팅방
+    //증권/약관 자체는 삭제하지 않는다 (다른 채팅방에서 재사용될 수 있음).
+    @Transactional
+    public void deleteSession(Long chatSessionId, Long userId) {
+        ChatSession chatSession = findChatSession(chatSessionId);
+
+        if (!chatSession.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.CHAT_SESSION_FORBIDDEN);
+        }
+
+        List<ChatMessage> messages =
+                chatMessageRepository.findByChatSessionIdOrderByCreatedAtAsc(chatSessionId);
+
+        List<Long> messageIds = messages.stream()
+                .map(ChatMessage::getMessageId)
+                .toList();
+
+        // 1. 답변 근거 (chat_message_source)
+        if (!messageIds.isEmpty()) {
+            chatMessageSourceRepository.deleteByMessageIdIn(messageIds);
+        }
+
+        // 2. 메시지
+        if (!messages.isEmpty()) {
+            chatMessageRepository.deleteAll(messages);
+        }
+
+        // 3. 채팅방-증권 연결 (증권 자체는 보존)
+        chatSessionPolicyRepository.deleteByChatSessionId(chatSessionId);
+
+        // 4. 대시보드 (PK가 chatSessionId)
+        if (dashboardRepository.existsById(chatSessionId)) {
+            dashboardRepository.deleteById(chatSessionId);
+        }
+
+        // 5. 채팅방
+        chatSessionRepository.delete(chatSession);
+    }
 
     // case2: analysisIds 포함 → 생성과 동시에 중간 테이블 연결
     // case3: 빈 바디 → 세션만 생성 (업로드 시 chatSessionId로 연결)
@@ -77,6 +118,11 @@ public class ChatService {
 
         List<Long> analysisIds = request.getAnalysisIds();
         if (analysisIds != null && !analysisIds.isEmpty()) {
+            // 기획: 한 채팅방의 증권은 1~3개
+            if (analysisIds.stream().distinct().count() > ChatSessionPolicy.MAX_PER_SESSION) {
+                throw new BusinessException(ErrorCode.POLICY_LIMIT_EXCEEDED);
+            }
+
             List<PolicyAnalysisQueryRepository.PolicyAnalysisInfo> analysisInfos =
                     policyAnalysisQueryRepository.findInfoByAnalysisIds(analysisIds);
 
