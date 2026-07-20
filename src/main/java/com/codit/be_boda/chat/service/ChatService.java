@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -64,6 +65,76 @@ public class ChatService {
     private final ChatAnswerService chatAnswerService;
     private final ChatMessageSourceRepository chatMessageSourceRepository;
     private final com.codit.be_boda.dashboard.repository.DashboardRepository dashboardRepository;
+    private final com.codit.be_boda.dashboard.service.DashboardService dashboardService;
+
+    // 기존 채팅방에 이미 분석이 끝난 증권을 추가로 연결한다.
+    //업로드 시 chatSessionId를 넘기지 못했거나(마이페이지에서 먼저 업로드한 경우),
+    // 대시보드 화면에서 약관을 붙이려는데 증권이 채팅방에 연결돼 있지 않은 경우에 사용한다.
+    // 이미 연결된 증권은 무시하고, 새로 연결된 증권을 반영해 대시보드를 갱신한다.
+    @Transactional
+    public ChatSessionResponse linkPolicies(
+            Long chatSessionId,
+            List<Long> analysisIds,
+            Long userId
+    ) {
+        ChatSession chatSession = findChatSession(chatSessionId);
+
+        if (!chatSession.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.CHAT_SESSION_FORBIDDEN);
+        }
+
+        if (analysisIds == null || analysisIds.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "analysisIds는 필수입니다.");
+        }
+
+        List<Long> alreadyLinked = chatSessionPolicyRepository
+                .findByChatSessionIdOrderByIdAsc(chatSessionId)
+                .stream()
+                .map(ChatSessionPolicy::getAnalysisId)
+                .toList();
+
+        // 이미 연결된 증권은 건너뛴다 (중복 연결 방지 → 멱등)
+        List<Long> toLink = analysisIds.stream()
+                .distinct()
+                .filter(analysisId -> !alreadyLinked.contains(analysisId))
+                .toList();
+
+        if (toLink.isEmpty()) {
+            return ChatSessionResponse.from(chatSession, alreadyLinked);
+        }
+
+        // 기획: 한 채팅방의 증권은 1~3개
+        if (alreadyLinked.size() + toLink.size() > ChatSessionPolicy.MAX_PER_SESSION) {
+            throw new BusinessException(ErrorCode.POLICY_LIMIT_EXCEEDED);
+        }
+
+        List<PolicyAnalysisQueryRepository.PolicyAnalysisInfo> analysisInfos =
+                policyAnalysisQueryRepository.findInfoByAnalysisIds(toLink);
+
+        if (analysisInfos.size() != toLink.size()) {
+            throw new BusinessException(ErrorCode.ANALYSIS_NOT_FOUND);
+        }
+
+        boolean allDone = analysisInfos.stream()
+                .allMatch(info -> DONE_STATUS.equals(info.analysisStatus()));
+        if (!allDone) {
+            throw new BusinessException(ErrorCode.ANALYSIS_NOT_DONE);
+        }
+
+        for (Long analysisId : toLink) {
+            chatSessionPolicyRepository.save(
+                    new ChatSessionPolicy(chatSessionId, analysisId)
+            );
+        }
+
+        // 새로 연결된 증권을 반영해 대시보드를 갱신 (실패해도 연결은 유지된다)
+        dashboardService.createDashboardIfReady(chatSessionId, userId);
+
+        List<Long> linked = new ArrayList<>(alreadyLinked);
+        linked.addAll(toLink);
+
+        return ChatSessionResponse.from(chatSession, linked);
+    }
 
     // 채팅방 삭제
     // 삭제 순서(FK 역방향): 답변 근거 → 메시지 → 채팅방-증권 연결 → 대시보드 → 채팅방

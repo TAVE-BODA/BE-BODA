@@ -184,12 +184,22 @@ public class MypageService {
         boolean dashboardAvailable = chats.stream()
                 .anyMatch(MypageChatResponse::dashboardAvailable);
 
+        // 어떤 채팅방에도 연결되지 않은 증권 (프론트가 "새 채팅에 끌어올 대상"으로 사용)
+        Set<Long> linkedIds = new HashSet<>();
+        for (MypageChatResponse chat : chats) {
+            linkedIds.addAll(chat.analysisIds());
+        }
+        List<Long> unlinkedAnalysisIds = analysisIds.stream()
+                .filter(analysisId -> !linkedIds.contains(analysisId))
+                .toList();
+
         return new MypageInsuranceResponse(
                 category.companyKey,
                 category.companyName,
                 buildTitle(representative, category.companyName),
                 toLocalDate(earliestCreatedAt(analysisIds, analysisById)),
                 analysisIds,
+                unlinkedAnalysisIds,
                 representative == null ? null : representative.getAnalysisStatus(),
                 isAllDone(analysisIds, analysisById),
                 termsUploaded,
