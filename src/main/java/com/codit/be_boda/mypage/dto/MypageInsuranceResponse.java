@@ -15,6 +15,7 @@ public record MypageInsuranceResponse(
         LocalDate registeredAt,            // 등록일 (가장 먼저 등록된 증권 기준)
 
         List<Long> analysisIds,            // 이 카테고리의 증권 전체
+        List<Long> unlinkedAnalysisIds,    // 그중 아직 어떤 채팅방에도 연결되지 않은 증권
         String policyStatus,               // 대표 증권 분석 상태 (PENDING/ANALYZING/DONE/ERROR)
         boolean policyCompleted,           // 증권 분석 완료 여부
 
