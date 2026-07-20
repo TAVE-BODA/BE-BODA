@@ -288,8 +288,12 @@ public class OutpatientAnswerGenerator {
                 .map(amount -> normalize(amount.condition()))
                 .anyMatch(condition ->
                         condition.contains("가입시확인사항")
+                                || condition.contains("가입관련안내")
                                 || condition.contains("관련안내가확인")
+                                || condition.contains("안내문구")
                                 || condition.contains("안내사항")
+                                || condition.contains("실제발생한비용")
+                                || condition.contains("2개이상가입")
                 );
     }
 

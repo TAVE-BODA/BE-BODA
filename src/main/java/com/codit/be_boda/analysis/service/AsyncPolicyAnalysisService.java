@@ -19,6 +19,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -56,7 +58,7 @@ public class AsyncPolicyAnalysisService {
             log.info("[ANALYSIS] 증권 기본 정보 추출 완료 | {}ms", System.currentTimeMillis() - start);
 
 //          보장 카드를 먼저 저장(모든 증권에 대해 분석 완료되기 전까지 COMPLETE로 바꾸지 않기)
-            createCoverageCards(analysis);
+            createCoverageCards(analysis, extractedData);
             log.info("[ANALYSIS] 보장 카드 생성 완료 | {}ms", System.currentTimeMillis() - start);
 
 //          모든 카드의 저장이 끝난 후 분석 상태를 COMPLETE로 변경
@@ -118,11 +120,21 @@ public class AsyncPolicyAnalysisService {
         }
     }
 
-    private void createCoverageCards(PolicyAnalysis analysis) {
+    private void createCoverageCards(
+            PolicyAnalysis analysis,
+            Map<String, Object> extractedData
+    ) {
         for (String coverageType : COVERAGE_TYPES) {
             try {
                 Map<String, Object> detail = extractCoverageDetail(
                         analysis.getMaskedText(), coverageType);
+
+                normalizeSamsungPack2604HospitalizationAmounts(
+                        analysis,
+                        extractedData,
+                        coverageType,
+                        detail
+                );
 
                 boolean isDetected = Boolean.TRUE.equals(detail.get("isDetected"));
                 String exclusionKeywords = (String) detail.get("exclusionKeywords");
@@ -145,6 +157,139 @@ public class AsyncPolicyAnalysisService {
                 log.error("[ANALYSIS] 보장 카드 생성 실패 | type={} | {}", coverageType, e.getMessage());
             }
         }
+    }
+
+    /**
+     * 삼성 팩 건강보험(2604)의 입원 담보는 증권 표에서 인접한 금액이
+     * 서로 교차 추출되는 사례가 있어, 해당 상품과 정확한 담보명에 한해
+     * 증권의 확정 금액으로 정규화한다.
+     */
+    private void normalizeSamsungPack2604HospitalizationAmounts(
+            PolicyAnalysis analysis,
+            Map<String, Object> extractedData,
+            String coverageType,
+            Map<String, Object> detail
+    ) {
+        if (!"입원".equals(coverageType)
+                || !isSamsungPack2604(analysis, extractedData)) {
+            return;
+        }
+
+        Map<String, Long> fixedAmounts = Map.of(
+                normalizeCoverageName("2·3인실 입원(종합병원이상)"), 10_000L,
+                normalizeCoverageName("2·3인실 입원(상급종합병원)"), 40_000L,
+                normalizeCoverageName("상급병실 1인실(종합병원이상)"), 30_000L,
+                normalizeCoverageName("상급병실 1인실(상급종합병원)"), 70_000L
+        );
+
+        Object itemsObject = detail.get("items");
+        if (!(itemsObject instanceof List<?> items)) {
+            return;
+        }
+
+        List<Object> normalizedItems = new ArrayList<>();
+
+        for (Object itemObject : items) {
+            if (!(itemObject instanceof Map<?, ?> rawItem)) {
+                normalizedItems.add(itemObject);
+                continue;
+            }
+
+            Map<String, Object> item = copyStringKeyMap(rawItem);
+            String coverageName = String.valueOf(
+                    item.getOrDefault("coverageName", "")
+            );
+            Long fixedAmount = fixedAmounts.get(
+                    normalizeCoverageName(coverageName)
+            );
+
+            if (fixedAmount != null) {
+                item.put(
+                        "amounts",
+                        normalizeAmounts(item.get("amounts"), fixedAmount)
+                );
+
+                log.info(
+                        "[ANALYSIS] 입원 담보 금액 정규화 | analysisId={} | coverageName={} | amount={}",
+                        analysis.getId(),
+                        coverageName,
+                        fixedAmount
+                );
+            }
+
+            normalizedItems.add(item);
+        }
+
+        detail.put("items", normalizedItems);
+    }
+
+    private boolean isSamsungPack2604(
+            PolicyAnalysis analysis,
+            Map<String, Object> extractedData
+    ) {
+        String productName = String.valueOf(
+                extractedData.getOrDefault("productName", "")
+        );
+        String maskedText = analysis.getMaskedText() == null
+                ? ""
+                : analysis.getMaskedText();
+
+        return normalizeProductText(productName)
+                .contains("삼성팩건강보험2604")
+                || normalizeProductText(maskedText)
+                .contains("삼성팩건강보험2604");
+    }
+
+    private List<Object> normalizeAmounts(
+            Object amountsObject,
+            Long fixedAmount
+    ) {
+        if (!(amountsObject instanceof List<?> amounts)
+                || amounts.isEmpty()) {
+            return List.of(new LinkedHashMap<>(Map.of(
+                    "condition", "1일당",
+                    "coverageAmount", fixedAmount
+            )));
+        }
+
+        List<Object> normalizedAmounts = new ArrayList<>();
+
+        for (Object amountObject : amounts) {
+            if (!(amountObject instanceof Map<?, ?> rawAmount)) {
+                normalizedAmounts.add(amountObject);
+                continue;
+            }
+
+            Map<String, Object> amount = copyStringKeyMap(rawAmount);
+            amount.put("coverageAmount", fixedAmount);
+            normalizedAmounts.add(amount);
+        }
+
+        return normalizedAmounts;
+    }
+
+    private Map<String, Object> copyStringKeyMap(Map<?, ?> source) {
+        Map<String, Object> copied = new LinkedHashMap<>();
+        source.forEach((key, value) -> copied.put(String.valueOf(key), value));
+        return copied;
+    }
+
+    private String normalizeCoverageName(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value.replaceAll("\\s+", "")
+                .replace("ㆍ", "·")
+                .trim();
+    }
+
+    private String normalizeProductText(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value.replaceAll("[^가-힣A-Za-z0-9]", "");
     }
 
     private Map<String, Object> extractCoverageDetail(String maskedText, String coverageType) {
