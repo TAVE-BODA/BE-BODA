@@ -477,6 +477,7 @@ public class AsyncPolicyAnalysisService {
                       ],
                       "exclusionKeywords": null
                     }
+                    실손세대와 관련된 내용이나 실손세대라는 정확한 명칭이 없는 경우, "condition" 값으로 "실손 감지 안됨"을 반환해줘.
                     """;
             case "골절재해" -> """
                     {
