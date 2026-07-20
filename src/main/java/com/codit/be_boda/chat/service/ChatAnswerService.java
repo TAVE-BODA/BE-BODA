@@ -792,17 +792,6 @@ public class ChatAnswerService {
             }
         }
 
-        // 일부 치료만 계산 가능한 경우
-        if (anyCalculationAvailable
-                && !allCalculationAvailable
-                && hasUnresolvedAmountCandidate) {
-
-            cautions.add(
-                    0,
-                    "일부 치료 항목은 필요한 정보가 부족해 전체 예상 보험금을 계산하지 못했어요."
-            );
-        }
-
         cautions = prioritizeAndLimitAmountCautions(
                 cautions,
                 4
