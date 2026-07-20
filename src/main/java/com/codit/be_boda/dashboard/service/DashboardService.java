@@ -10,6 +10,7 @@ import com.codit.be_boda.dashboard.repository.DashboardRepository;
 import com.codit.be_boda.user.domain.User;
 import com.codit.be_boda.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.codit.be_boda.analysis.domain.PolicyAnalysis;
@@ -32,6 +33,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -477,36 +479,79 @@ public class DashboardService {
 
 
     // 분석 완료 서비스에서 호출할 자동 생성 진입점
-    // 모든 분석이 완료되지 않았다면 생성하지 않고 종료
-    // 이미 생성된 경우에도 다시 생성하지 않음
+    //
+    // 증권은 파일마다 별도의 업로드 요청으로 들어오기 때문에,
+    // 첫 번째 증권의 분석이 끝나는 시점에는 아직 chat_session_policy 행이
+    // 전부 들어와 있지 않을 수 있다.
+    // 이때 대시보드를 한 번만 만들고 끝내면 증권 1개짜리 대시보드가 확정되어
+    // 뒤늦게 완료된 증권들이 영원히 반영되지 않는다.
+    //
+    // 따라서 이미 대시보드가 있어도 return하지 않고, 현재 연결된 증권 전체를 기준으로
+    // 삭제 후 재생성한다(멱등). 증권이 하나씩 완료될 때마다 최신 상태로 갱신된다.
+    //
+    // 또한 대시보드 생성 실패가 증권 분석 자체를 실패로 만들지 않도록
+    // 이 메서드 안에서 예외를 처리한다.
+    // (호출부인 analyzeAsync와 같은 트랜잭션이라, 예외가 밖으로 나가면
+    //  트랜잭션이 rollback-only로 마킹되어 분석 결과까지 롤백된다)
     @Transactional
     public void createDashboardIfReady(
             Long chatSessionId,
             Long userId
     ) {
-        if (dashboardRepository.existsById(chatSessionId)) {
-            return;
+        try {
+            List<ChatSessionPolicy> sessionPolicies =
+                    findSessionPolicies(chatSessionId);
+
+            List<Long> analysisIds =
+                    extractAnalysisIds(sessionPolicies);
+
+            List<PolicyAnalysis> analyses =
+                    findPolicyAnalyses(analysisIds);
+
+            // 아직 분석 중인 증권이 있으면 생성하지 않는다.
+            // (이미 만들어진 대시보드가 있다면 그대로 두고, 마지막 증권이 끝날 때 갱신된다)
+            if (!areAllAnalysesCompleted(analyses)) {
+                log.info(
+                        "[DASHBOARD] 분석 미완료 증권이 있어 생성 보류 | chatSessionId={} | 증권수={}",
+                        chatSessionId,
+                        analysisIds.size()
+                );
+                return;
+            }
+
+            // 기존 대시보드가 있으면 새로 연결된 증권을 반영하기 위해 삭제 후 재생성한다.
+            // flush()로 DELETE를 먼저 실행시켜야 같은 PK(chatSessionId) INSERT와 충돌하지 않는다.
+            if (dashboardRepository.existsById(chatSessionId)) {
+                dashboardRepository.deleteById(chatSessionId);
+                dashboardRepository.flush();
+
+                log.info(
+                        "[DASHBOARD] 기존 대시보드 삭제 후 재생성 | chatSessionId={}",
+                        chatSessionId
+                );
+            }
+
+            createDashboard(
+                    chatSessionId,
+                    userId,
+                    analysisIds,
+                    analyses
+            );
+
+            log.info(
+                    "[DASHBOARD] 대시보드 생성 완료 | chatSessionId={} | analysisIds={}",
+                    chatSessionId,
+                    analysisIds
+            );
+
+        } catch (Exception e) {
+            // 대시보드는 부가 산출물이므로 실패해도 증권 분석은 성공으로 유지한다
+            log.warn(
+                    "[DASHBOARD] 대시보드 생성 보류 | chatSessionId={} | {}",
+                    chatSessionId,
+                    e.getMessage()
+            );
         }
-
-        List<ChatSessionPolicy> sessionPolicies =
-                findSessionPolicies(chatSessionId);
-
-        List<Long> analysisIds =
-                extractAnalysisIds(sessionPolicies);
-
-        List<PolicyAnalysis> analyses =
-                findPolicyAnalyses(analysisIds);
-
-        if (!areAllAnalysesCompleted(analyses)) {
-            return;
-        }
-
-        createDashboard(
-                chatSessionId,
-                userId,
-                analysisIds,
-                analyses
-        );
     }
 
     // 기존 createDashboard(DashboardResponse request)를 제거하고,
