@@ -2,6 +2,7 @@ package com.codit.be_boda.chat.controller;
 
 import com.codit.be_boda.chat.dto.request.ChatMessageRequest;
 import com.codit.be_boda.chat.dto.request.ChatSessionCreateRequest;
+import com.codit.be_boda.chat.dto.request.ChatSessionPolicyLinkRequest;
 import com.codit.be_boda.chat.dto.response.ChatMessagePairResponse;
 import com.codit.be_boda.chat.dto.response.ChatMessageResponse;
 import com.codit.be_boda.chat.dto.response.ChatSessionResponse;
@@ -50,6 +51,33 @@ public class ChatController {
         ChatSessionCreateRequest req = request != null ? request : new ChatSessionCreateRequest();
         ChatSessionResponse response = chatService.createSession(req, userId);
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "기존 채팅방에 증권 연결",
+            description = """
+                    이미 분석이 끝난 증권(analysisId)을 기존 채팅방에 추가로 연결합니다.
+                    업로드 시 chatSessionId를 넘기지 못한 증권을 나중에 채팅방에 붙일 때 사용합니다.
+                    이미 연결된 증권은 무시되며(멱등), 연결 후 대시보드가 갱신됩니다.
+                    한 채팅방에는 증권을 최대 3개까지 연결할 수 있습니다.
+                    """
+    )
+    @ApiResponse(responseCode = "200", description = "연결 성공")
+    @ApiResponse(responseCode = "400", description = "증권 개수 초과 / analysisIds 누락")
+    @ApiResponse(responseCode = "403", description = "본인의 채팅방이 아님")
+    @ApiResponse(responseCode = "404", description = "채팅방 또는 증권을 찾을 수 없음")
+    @ApiResponse(responseCode = "409", description = "분석이 완료되지 않은 증권")
+    @PostMapping("/sessions/{chatSessionId}/policies")
+    public ResponseEntity<ChatSessionResponse> linkPolicies(
+            @PathVariable Long chatSessionId,
+            @RequestBody ChatSessionPolicyLinkRequest request,
+            HttpSession session
+    ) {
+        Long userId = getUserId(session);
+
+        return ResponseEntity.ok(
+                chatService.linkPolicies(chatSessionId, request.getAnalysisIds(), userId)
+        );
     }
 
     @Operation(
