@@ -175,13 +175,6 @@ public class AsyncPolicyAnalysisService {
             return;
         }
 
-        Map<String, Long> fixedAmounts = Map.of(
-                normalizeCoverageName("2·3인실 입원(종합병원이상)"), 10_000L,
-                normalizeCoverageName("2·3인실 입원(상급종합병원)"), 40_000L,
-                normalizeCoverageName("상급병실 1인실(종합병원이상)"), 30_000L,
-                normalizeCoverageName("상급병실 1인실(상급종합병원)"), 70_000L
-        );
-
         Object itemsObject = detail.get("items");
         if (!(itemsObject instanceof List<?> items)) {
             return;
@@ -199,28 +192,43 @@ public class AsyncPolicyAnalysisService {
             String coverageName = String.valueOf(
                     item.getOrDefault("coverageName", "")
             );
-            Long fixedAmount = fixedAmounts.get(
-                    normalizeCoverageName(coverageName)
-            );
 
-            if (fixedAmount != null) {
-                item.put(
-                        "amounts",
-                        normalizeAmounts(item.get("amounts"), fixedAmount)
-                );
-
-                log.info(
-                        "[ANALYSIS] 입원 담보 금액 정규화 | analysisId={} | coverageName={} | amount={}",
-                        analysis.getId(),
-                        coverageName,
-                        fixedAmount
-                );
+            if (isManagedSamsungPack2604HospitalizationCoverage(
+                    coverageName
+            )) {
+                continue;
             }
 
             normalizedItems.add(item);
         }
 
+        normalizedItems.add(createHospitalizationItem(
+                "2·3인실 입원(종합병원이상)",
+                10_000L,
+                true
+        ));
+        normalizedItems.add(createHospitalizationItem(
+                "2·3인실 입원(상급종합병원)",
+                40_000L,
+                true
+        ));
+        normalizedItems.add(createHospitalizationItem(
+                "상급병실 1인실(종합병원이상)",
+                30_000L,
+                false
+        ));
+        normalizedItems.add(createHospitalizationItem(
+                "상급병실 1인실(상급종합병원)",
+                70_000L,
+                false
+        ));
+
         detail.put("items", normalizedItems);
+
+        log.info(
+                "[ANALYSIS] 삼성 팩 건강보험(2604) 입원 담보 4종 정규화 완료 | analysisId={}",
+                analysis.getId()
+        );
     }
 
     private boolean isSamsungPack2604(
@@ -240,32 +248,56 @@ public class AsyncPolicyAnalysisService {
                 .contains("삼성팩건강보험2604");
     }
 
-    private List<Object> normalizeAmounts(
-            Object amountsObject,
-            Long fixedAmount
+    private boolean isManagedSamsungPack2604HospitalizationCoverage(
+            String coverageName
     ) {
-        if (!(amountsObject instanceof List<?> amounts)
-                || amounts.isEmpty()) {
-            return List.of(new LinkedHashMap<>(Map.of(
-                    "condition", "1일당",
-                    "coverageAmount", fixedAmount
-            )));
+        String normalizedName = normalizeCoverageName(coverageName);
+        boolean twoOrThreeRoom =
+                (normalizedName.contains("2인실입원")
+                        || normalizedName.contains("3인실입원"))
+                        && normalizedName.contains("종합병원");
+        boolean privateRoom =
+                normalizedName.contains("상급병실1인실")
+                        && normalizedName.contains("종합병원");
+
+        return twoOrThreeRoom || privateRoom;
+    }
+
+    private Map<String, Object> createHospitalizationItem(
+            String coverageName,
+            Long coverageAmount,
+            boolean hasContractPeriodConditions
+    ) {
+        List<Object> amounts = new ArrayList<>();
+
+        if (hasContractPeriodConditions) {
+            amounts.add(createAmount(
+                    "계약일부터 1년 초과 1일당",
+                    coverageAmount
+            ));
+            amounts.add(createAmount(
+                    "계약일부터 1년 이내 1일당",
+                    coverageAmount
+            ));
+        } else {
+            amounts.add(createAmount("1일당", coverageAmount));
         }
 
-        List<Object> normalizedAmounts = new ArrayList<>();
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("coverageName", coverageName);
+        item.put("amounts", amounts);
+        return item;
+    }
 
-        for (Object amountObject : amounts) {
-            if (!(amountObject instanceof Map<?, ?> rawAmount)) {
-                normalizedAmounts.add(amountObject);
-                continue;
-            }
+    private Map<String, Object> createAmount(
+            String condition,
+            Long coverageAmount
+    ) {
+        Map<String, Object> amount = new LinkedHashMap<>();
+        amount.put("condition", condition);
+        amount.put("coverageAmount", coverageAmount);
 
-            Map<String, Object> amount = copyStringKeyMap(rawAmount);
-            amount.put("coverageAmount", fixedAmount);
-            normalizedAmounts.add(amount);
-        }
-
-        return normalizedAmounts;
+        return amount;
     }
 
     private Map<String, Object> copyStringKeyMap(Map<?, ?> source) {
