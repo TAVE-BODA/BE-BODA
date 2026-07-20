@@ -63,6 +63,33 @@ class AsyncPolicyAnalysisServiceTest {
     }
 
     @Test
+    @DisplayName("분리 추출된 2인실과 3인실 담보도 네 개의 표준 입원 담보로 통합한다")
+    void normalizeSeparatelyExtractedTwoAndThreeRoomItems() {
+        PolicyAnalysis analysis = PolicyAnalysis.builder()
+                .maskedText("삼성 팩 건강보험(2604) 보험증권")
+                .build();
+        Map<String, Object> detail = separatelyExtractedHospitalizationDetail();
+
+        ReflectionTestUtils.invokeMethod(
+                service,
+                "normalizeSamsungPack2604HospitalizationAmounts",
+                analysis,
+                Map.of("productName", "삼성 팩 건강보험(2604)"),
+                "입원",
+                detail
+        );
+
+        Map<String, List<Long>> amounts = amountsByCoverageName(detail);
+
+        assertThat(amounts)
+                .hasSize(4)
+                .containsEntry("2·3인실 입원(종합병원이상)", List.of(10_000L, 10_000L))
+                .containsEntry("2·3인실 입원(상급종합병원)", List.of(40_000L, 40_000L))
+                .containsEntry("상급병실 1인실(종합병원이상)", List.of(30_000L))
+                .containsEntry("상급병실 1인실(상급종합병원)", List.of(70_000L));
+    }
+
+    @Test
     @DisplayName("다른 보험 상품의 입원 담보 금액은 변경하지 않는다")
     void doesNotNormalizeOtherProduct() {
         PolicyAnalysis analysis = PolicyAnalysis.builder()
@@ -90,6 +117,21 @@ class AsyncPolicyAnalysisServiceTest {
         List<Object> items = new ArrayList<>();
         items.add(item("2·3인실 입원(종합병원이상)", 70_000L, 70_000L));
         items.add(item("2·3인실 입원(상급종합병원)", 70_000L, 70_000L));
+        items.add(item("상급병실 1인실(종합병원이상)", 40_000L));
+        items.add(item("상급병실 1인실(상급종합병원)", 40_000L));
+
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("isDetected", true);
+        detail.put("items", items);
+        return detail;
+    }
+
+    private Map<String, Object> separatelyExtractedHospitalizationDetail() {
+        List<Object> items = new ArrayList<>();
+        items.add(item("2인실 입원(종합병원이상)", 10_000L));
+        items.add(item("3인실 입원(종합병원이상)", 10_000L));
+        items.add(item("2인실 입원(상급종합병원)", 70_000L));
+        items.add(item("3인실 입원(상급종합병원)", 10_000L));
         items.add(item("상급병실 1인실(종합병원이상)", 40_000L));
         items.add(item("상급병실 1인실(상급종합병원)", 40_000L));
 
