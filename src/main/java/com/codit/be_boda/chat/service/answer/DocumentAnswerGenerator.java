@@ -25,8 +25,8 @@ public class DocumentAnswerGenerator {
     // 먼저 넓게 검색한 뒤 칩3 내부에서 정확한 근거만 선택
     private static final int SEARCH_LIMIT = 30;
 
-    // 프론트에 제공할 칩3 근거 최대 개수
-    private static final int EVIDENCE_LIMIT = 2;
+    // 한 서류 카드에 연결할 약관 근거 최대 개수
+    private static final int EVIDENCE_LIMIT_PER_DOCUMENT = 1;
 
     private final TermsChunkQueryRepository termsChunkQueryRepository;
 
@@ -103,7 +103,8 @@ public class DocumentAnswerGenerator {
                 filterEvidenceChunks(
                         searchedChunks,
                         request,
-                        claimStatuses
+                        claimStatuses,
+                        documents
                 );
 
         boolean hasSources =
@@ -138,7 +139,8 @@ public class DocumentAnswerGenerator {
     private List<TermsChunkInfo> filterEvidenceChunks(
             List<TermsChunkInfo> chunks,
             ChatMessageRequest request,
-            Map<TreatmentType, String> claimStatuses
+            Map<TreatmentType, String> claimStatuses,
+            List<DocumentCandidate> documents
     ) {
         if (chunks == null || chunks.isEmpty()) {
             return List.of();
@@ -170,9 +172,9 @@ public class DocumentAnswerGenerator {
                         .toList();
 
         List<TermsChunkInfo> filteredChunks =
-                deduplicateByClause(
+                selectEvidenceByDocument(
                         sortedChunks,
-                        EVIDENCE_LIMIT
+                        documents
                 );
 
         if (!filteredChunks.isEmpty()) {
@@ -190,56 +192,46 @@ public class DocumentAnswerGenerator {
                 .orElseGet(List::of);
     }
 
-    // 하나의 조항이 여러 청크로 나뉘 경우 제거
-    private List<TermsChunkInfo> deduplicateByClause(
+    // 하나의 청구서류 조항이 여러 청크로 나뉘어도
+    // 각 서류 카드에 직접 대응하는 청크는 하나씩 보존
+    private List<TermsChunkInfo> selectEvidenceByDocument(
             List<TermsChunkInfo> chunks,
-            int limit
+            List<DocumentCandidate> documents
     ) {
-        Map<String, TermsChunkInfo> uniqueChunks =
+        if (chunks == null
+                || chunks.isEmpty()
+                || documents == null
+                || documents.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, TermsChunkInfo> selectedChunks =
                 new LinkedHashMap<>();
 
-        for (TermsChunkInfo chunk : chunks) {
-            if (chunk == null || chunk.chunkId() == null) {
-                continue;
-            }
-
-            uniqueChunks.putIfAbsent(
-                    buildClauseKey(chunk),
-                    chunk
-            );
+        for (DocumentCandidate document : documents) {
+            chunks.stream()
+                    .filter(chunk ->
+                            chunk != null
+                                    && chunk.chunkId() != null
+                    )
+                    .filter(chunk ->
+                            matchesDocument(
+                                    chunk,
+                                    document.name()
+                            )
+                    )
+                    .limit(EVIDENCE_LIMIT_PER_DOCUMENT)
+                    .forEach(chunk ->
+                            selectedChunks.putIfAbsent(
+                                    chunk.chunkId(),
+                                    chunk
+                            )
+                    );
         }
 
-        return uniqueChunks.values()
-                .stream()
-                .limit(limit)
-                .toList();
-    }
-
-    private String buildClauseKey(
-            TermsChunkInfo chunk
-    ) {
-        if (chunk.clauseId() != null) {
-            return "CLAUSE_ID:"
-                    + chunk.clauseId();
-        }
-
-        String clauseKey = normalize(
-                safe(chunk.clauseNo())
-                        + safe(chunk.clauseTitle())
+        return new ArrayList<>(
+                selectedChunks.values()
         );
-
-        if (!clauseKey.isBlank()) {
-            return "CLAUSE:" + clauseKey;
-        }
-
-        String sectionKey =
-                normalize(chunk.sectionTitle());
-
-        if (!sectionKey.isBlank()) {
-            return "SECTION:" + sectionKey;
-        }
-
-        return "CHUNK_ID:" + chunk.chunkId();
     }
 
     private boolean isRelevantDocumentChunk(

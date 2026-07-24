@@ -43,7 +43,11 @@ public class CastAnswerGenerator {
 
             return detail.items().stream()
                     .filter(item -> item.coverageName() != null)
-                    .filter(item -> item.coverageName().contains("깁스"))
+                    .filter(item ->
+                            isCastCoverageName(
+                                    item.coverageName()
+                            )
+                    )
                     .findFirst()
                     .map(item -> buildCastClaimAnswer(
                             item,
@@ -144,8 +148,9 @@ public class CastAnswerGenerator {
                                     item.coverageName() != null
                             )
                             .filter(item ->
-                                    item.coverageName()
-                                            .contains("깁스")
+                                    isCastCoverageName(
+                                            item.coverageName()
+                                    )
                             )
                             .findFirst()
                             .orElse(null);
@@ -571,7 +576,11 @@ public class CastAnswerGenerator {
 
             CoverageItemDto castItem = detail.items().stream()
                     .filter(item -> item.coverageName() != null)
-                    .filter(item -> item.coverageName().contains("깁스"))
+                    .filter(item ->
+                            isCastCoverageName(
+                                    item.coverageName()
+                            )
+                    )
                     .findFirst()
                     .orElse(null);
 
@@ -671,7 +680,42 @@ public class CastAnswerGenerator {
         return cautions;
     }
 
-    private String normalize(String value) {
+    static boolean isCastCoverageName(
+            String coverageName
+    ) {
+        if (coverageName == null
+                || coverageName.isBlank()) {
+            return false;
+        }
+
+        String benefitName =
+                extractBenefitName(
+                        coverageName
+                );
+
+        return normalizeCoverageName(
+                benefitName
+        ).contains("깁스");
+    }
+
+    private static String extractBenefitName(
+            String coverageName
+    ) {
+        int separatorIndex =
+                coverageName.lastIndexOf(" - ");
+
+        if (separatorIndex < 0) {
+            return coverageName;
+        }
+
+        return coverageName.substring(
+                separatorIndex + 3
+        );
+    }
+
+    private static String normalizeCoverageName(
+            String value
+    ) {
         if (value == null) {
             return "";
         }
@@ -683,6 +727,10 @@ public class CastAnswerGenerator {
                 .replace(")", "")
                 .replace("·", "")
                 .replace("-", "");
+    }
+
+    private String normalize(String value) {
+        return normalizeCoverageName(value);
     }
 
     private record CastCoverageMatch(
@@ -705,4 +753,3 @@ public class CastAnswerGenerator {
         }
     }
 }
-
