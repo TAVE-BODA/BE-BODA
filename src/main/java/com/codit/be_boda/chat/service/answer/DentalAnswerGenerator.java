@@ -264,7 +264,11 @@ public class DentalAnswerGenerator {
         boolean canCalculateTotalAmount = canCalculateTotalAmount(dentalInfo);
 
         if (canCalculateTotalAmount) {
-            Long totalAmount = calculateTotalAmount(matchedItems, dentalInfo);
+            Long totalAmount =
+                    calculateTotalAmount(
+                            matchedItems,
+                            dentalInfo
+                    );
 
             if (totalAmount != null) {
                 answer.append("예상 치아치료 보험금은 약 ")
@@ -280,7 +284,11 @@ public class DentalAnswerGenerator {
                 answer.append("- ")
                         .append(item.coverageName());
 
-                String amountText = buildAmountText(item, dentalInfo);
+                String amountText =
+                        buildAmountText(
+                                item,
+                                dentalInfo
+                        );
                 if (!amountText.isBlank()) {
                     answer.append(": ")
                             .append(amountText);
@@ -738,17 +746,21 @@ public class DentalAnswerGenerator {
         boolean hasAmount = false;
 
         for (CoverageItemDto item : matchedItems) {
-            if (item.amounts() == null || item.amounts().isEmpty()) {
+            if (item.amounts() == null
+                    || item.amounts().isEmpty()) {
                 continue;
             }
 
-            CoverageAmountDto amount = item.amounts().get(0);
+            CoverageAmountDto amount =
+                    item.amounts().get(0);
 
             if (amount.coverageAmount() == null) {
                 continue;
             }
 
-            totalAmount += amount.coverageAmount() * treatmentCount;
+            totalAmount +=
+                    amount.coverageAmount()
+                            * treatmentCount;
             hasAmount = true;
         }
 
