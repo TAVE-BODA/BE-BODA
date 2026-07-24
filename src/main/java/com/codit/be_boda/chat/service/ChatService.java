@@ -8,7 +8,6 @@ import com.codit.be_boda.chat.dto.response.ChatMessagePairResponse;
 import com.codit.be_boda.chat.dto.response.ChatMessageResponse;
 import com.codit.be_boda.chat.dto.response.ChatSessionResponse;
 import com.codit.be_boda.chat.dto.response.ChatMessageSourceResponse;
-import com.codit.be_boda.chat.dto.response.DocumentGuideResponse;
 import com.codit.be_boda.chat.entity.ChatMessage;
 import com.codit.be_boda.chat.entity.ChatMessageSource;
 import com.codit.be_boda.chat.entity.ChatSession;
@@ -32,9 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.regex.Matcher;
@@ -267,13 +263,7 @@ public class ChatService {
 
         ChatMessage savedAiMessage = chatMessageRepository.save(aiMessage);
 
-        saveMessageSources(
-                savedAiMessage.getMessageId(),
-                mergeSourcesWithDocumentGuide(
-                        aiAnswer.sources(),
-                        aiAnswer.documentGuide()
-                )
-        );
+        saveMessageSources(savedAiMessage.getMessageId(), aiAnswer.sources());
 
         return ChatMessagePairResponse.of(
                 chatSession.getChatSessionId(),
@@ -374,191 +364,32 @@ public class ChatService {
         if (sourceQuestionType == QuestionType.CHIP_CLAIM
                 || sourceQuestionType == QuestionType.CHIP_AMOUNT
                 || sourceQuestionType == QuestionType.CHIP_DOCUMENTS) {
-            sources = prepareSourcesForDisplay(sources);
+            sources = deduplicateSourcesByTitle(sources);
         }
 
         return ChatMessageSourceResponse.available(messageId, sources);
     }
 
     static List<ChatMessageSourceResponse.SourceItem>
-    prepareSourcesForDisplay(
+    deduplicateSourcesByTitle(
             List<ChatMessageSourceResponse.SourceItem> sources
     ) {
         if (sources == null || sources.isEmpty()) {
             return List.of();
         }
 
-        // 동일한 근거만 제거한다. 제목이 같더라도 본문이 다르면
-        // 하나의 약관 조항이 여러 청크로 나뉜 것일 수 있으므로 유지한다.
-        Map<String, ChatMessageSourceResponse.SourceItem> uniqueSources =
-                new LinkedHashMap<>();
+        Set<String> seenTitles = new HashSet<>();
 
-        for (ChatMessageSourceResponse.SourceItem source : sources) {
-            if (source == null) {
-                continue;
-            }
-
-            uniqueSources.putIfAbsent(
-                    buildSourceContentKey(source),
-                    source
-            );
-        }
-
-        Map<String, Long> titleCounts =
-                uniqueSources.values().stream()
-                        .collect(
-                                java.util.stream.Collectors.groupingBy(
-                                        source -> normalizeSourceTitle(
-                                                source.getTitle()
-                                        ),
-                                        LinkedHashMap::new,
-                                        java.util.stream.Collectors.counting()
+        return sources.stream()
+                .filter(source ->
+                        source != null
+                                && seenTitles.add(
+                                normalizeSourceTitle(
+                                        source.getTitle()
                                 )
-                        );
-
-        Set<String> usedDisplayTitles = new HashSet<>();
-        List<ChatMessageSourceResponse.SourceItem> result =
-                new ArrayList<>();
-
-        for (ChatMessageSourceResponse.SourceItem source
-                : uniqueSources.values()) {
-            String normalizedTitle =
-                    normalizeSourceTitle(source.getTitle());
-            String displayTitle = source.getTitle();
-
-            if (titleCounts.getOrDefault(
-                    normalizedTitle,
-                    0L
-            ) > 1) {
-                displayTitle =
-                        buildDistinctSourceTitle(
-                                source,
-                                usedDisplayTitles
-                        );
-            }
-
-            usedDisplayTitles.add(
-                    normalizeSourceTitle(displayTitle)
-            );
-            result.add(
-                    Objects.equals(
-                            displayTitle,
-                            source.getTitle()
-                    )
-                            ? source
-                            : copySourceWithTitle(
-                            source,
-                            displayTitle
-                    )
-            );
-        }
-
-        return result;
-    }
-
-    private static String buildSourceContentKey(
-            ChatMessageSourceResponse.SourceItem source
-    ) {
-        String citedText =
-                normalizeSourceContent(source.getCitedText());
-
-        if (!citedText.isBlank()) {
-            return normalizeSourceTitle(source.getTitle())
-                    + "|"
-                    + citedText;
-        }
-
-        if (source.getChunkId() != null) {
-            return "CHUNK:" + source.getChunkId();
-        }
-
-        return "SOURCE:" + source.getSourceId();
-    }
-
-    private static String buildDistinctSourceTitle(
-            ChatMessageSourceResponse.SourceItem source,
-            Set<String> usedDisplayTitles
-    ) {
-        String baseTitle =
-                source.getTitle() == null
-                        || source.getTitle().isBlank()
-                        ? "보험약관 조항"
-                        : source.getTitle();
-        String detail =
-                classifySourceDetail(source);
-        String candidate =
-                baseTitle + " - " + detail;
-        int sequence = 2;
-
-        while (usedDisplayTitles.contains(
-                normalizeSourceTitle(candidate)
-        )) {
-            candidate =
-                    baseTitle
-                            + " - "
-                            + detail
-                            + " "
-                            + sequence++;
-        }
-
-        return candidate;
-    }
-
-    private static String classifySourceDetail(
-            ChatMessageSourceResponse.SourceItem source
-    ) {
-        String text =
-                normalizeSourceContent(source.getCitedText());
-
-        if (text.contains("제외")
-                || text.contains("지급하지아니")
-                || text.contains("지급하지않")
-                || text.contains("보장하지않")
-                || text.contains("보상하지않")) {
-            return "지급 제외 조건";
-        }
-
-        if (text.contains("구비서류")
-                || text.contains("청구서류")
-                || text.contains("필요서류")) {
-            return "청구 서류";
-        }
-
-        if (text.contains("지급금액")
-                || text.contains("보험가입금액")
-                || text.contains("1회당")
-                || text.contains("일당")
-                || text.contains("1년이내")
-                || text.contains("1년초과")
-                || text.contains("50%")
-                || text.contains("100%")) {
-            return "보험금 지급 기준";
-        }
-
-        if ("DEFINITION".equalsIgnoreCase(
-                source.getClauseType()
-        )
-                || text.contains("정의")
-                || text.contains("이라함은")) {
-            return "용어 및 적용 기준";
-        }
-
-        return "보장 조건";
-    }
-
-    private static ChatMessageSourceResponse.SourceItem
-    copySourceWithTitle(
-            ChatMessageSourceResponse.SourceItem source,
-            String title
-    ) {
-        return ChatMessageSourceResponse.SourceItem.builder()
-                .sourceId(source.getSourceId())
-                .chunkId(source.getChunkId())
-                .title(title)
-                .citedText(source.getCitedText())
-                .clauseType(source.getClauseType())
-                .relevanceScore(source.getRelevanceScore())
-                .build();
+                        )
+                )
+                .toList();
     }
 
     private static String normalizeSourceTitle(String title) {
@@ -566,18 +397,10 @@ public class ChatService {
             return "";
         }
 
-        return title.replaceAll("\\s+", "")
-                .trim();
-    }
-
-    private static String normalizeSourceContent(
-            String content
-    ) {
-        if (content == null) {
-            return "";
-        }
-
-        return content.replaceAll("\\s+", "")
+        return title
+                .replace("[", "(")
+                .replace("]", ")")
+                .replaceAll("\\s+", "")
                 .trim();
     }
 
@@ -848,74 +671,6 @@ public class ChatService {
         }
 
         chatMessageSourceRepository.saveAll(messageSources);
-    }
-
-    /**
-     * CHIP_DOCUMENTS 카드에 연결된 chunkId가 AnswerSource 목록에서 빠져도
-     * 약관 근거 조회 API에서 확인할 수 있도록 저장 대상을 합친다.
-     */
-    static List<AnswerSource> mergeSourcesWithDocumentGuide(
-            List<AnswerSource> sources,
-            DocumentGuideResponse documentGuide
-    ) {
-        Map<Long, AnswerSource> sourcesByChunkId =
-                new LinkedHashMap<>();
-
-        if (sources != null) {
-            sources.stream()
-                    .filter(Objects::nonNull)
-                    .filter(source -> source.chunkId() != null)
-                    .forEach(source ->
-                            sourcesByChunkId.putIfAbsent(
-                                    source.chunkId(),
-                                    source
-                            )
-                    );
-        }
-
-        if (documentGuide == null) {
-            return List.copyOf(sourcesByChunkId.values());
-        }
-
-        addDocumentChunkIds(
-                sourcesByChunkId,
-                documentGuide.getSourceChunkIds()
-        );
-
-        if (documentGuide.getDocuments() != null) {
-            documentGuide.getDocuments().stream()
-                    .filter(Objects::nonNull)
-                    .forEach(document ->
-                            addDocumentChunkIds(
-                                    sourcesByChunkId,
-                                    document.getSourceChunkIds()
-                            )
-                    );
-        }
-
-        return List.copyOf(sourcesByChunkId.values());
-    }
-
-    private static void addDocumentChunkIds(
-            Map<Long, AnswerSource> sourcesByChunkId,
-            List<Long> chunkIds
-    ) {
-        if (chunkIds == null) {
-            return;
-        }
-
-        chunkIds.stream()
-                .filter(Objects::nonNull)
-                .forEach(chunkId ->
-                        sourcesByChunkId.putIfAbsent(
-                                chunkId,
-                                new AnswerSource(
-                                        chunkId,
-                                        null,
-                                        null
-                                )
-                        )
-                );
     }
 
     private ChatSession findChatSession(Long chatSessionId) {
