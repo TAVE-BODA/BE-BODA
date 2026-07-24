@@ -358,25 +358,49 @@ public class ChatService {
                         .build())
                 .toList();
 
-        if (chatMessage.getQuestionType() == QuestionType.CHIP_AMOUNT) {
-            Set<String> seenTitles = new HashSet<>();
+        QuestionType sourceQuestionType =
+                chatMessage.getQuestionType();
 
-            sources = sources.stream()
-                    .filter(source -> seenTitles.add(
-                            normalizeSourceTitle(source.getTitle())
-                    ))
-                    .toList();
+        if (sourceQuestionType == QuestionType.CHIP_CLAIM
+                || sourceQuestionType == QuestionType.CHIP_AMOUNT
+                || sourceQuestionType == QuestionType.CHIP_DOCUMENTS) {
+            sources = deduplicateSourcesByTitle(sources);
         }
 
         return ChatMessageSourceResponse.available(messageId, sources);
     }
 
-    private String normalizeSourceTitle(String title) {
+    static List<ChatMessageSourceResponse.SourceItem>
+    deduplicateSourcesByTitle(
+            List<ChatMessageSourceResponse.SourceItem> sources
+    ) {
+        if (sources == null || sources.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> seenTitles = new HashSet<>();
+
+        return sources.stream()
+                .filter(source ->
+                        source != null
+                                && seenTitles.add(
+                                normalizeSourceTitle(
+                                        source.getTitle()
+                                )
+                        )
+                )
+                .toList();
+    }
+
+    private static String normalizeSourceTitle(String title) {
         if (title == null) {
             return "";
         }
 
-        return title.replaceAll("\\s+", "")
+        return title
+                .replace("[", "(")
+                .replace("]", ")")
+                .replaceAll("\\s+", "")
                 .trim();
     }
 
