@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -63,7 +64,14 @@ public class ClaimEvidenceFinder {
                         );
 
         return deduplicateByClause(
-                searchedChunks,
+                searchedChunks.stream()
+                        .filter(chunk ->
+                                isRelevantClaimChunk(
+                                        chunk,
+                                        request
+                                )
+                        )
+                        .toList(),
                 SOURCE_LIMIT
         )
                 .stream()
@@ -412,6 +420,24 @@ public class ClaimEvidenceFinder {
                         treatmentType
                 );
             }
+
+            if (request.getTreatmentTypes().contains(
+                    TreatmentType.DENTAL
+            )) {
+                addDentalClaimKeywords(
+                        keywords,
+                        request
+                );
+            }
+
+            if (request.getTreatmentTypes().contains(
+                    TreatmentType.DIAGNOSIS_ONLY
+            )) {
+                addDiagnosisClaimKeywords(
+                        keywords,
+                        request.getMessage()
+                );
+            }
         }
 
         // 짧은 진단명이나 수술명도 검색에 활용
@@ -425,6 +451,113 @@ public class ClaimEvidenceFinder {
         }
 
         return List.copyOf(keywords);
+    }
+
+    private void addDentalClaimKeywords(
+            Set<String> keywords,
+            ChatMessageRequest request
+    ) {
+        if (request.getDentalInfo() == null
+                || request.getDentalInfo()
+                .getDentalTreatmentTypes() == null) {
+            return;
+        }
+
+        String message = normalize(
+                request.getMessage()
+        );
+
+        for (DentalTreatmentType treatmentType
+                : request.getDentalInfo()
+                .getDentalTreatmentTypes()) {
+
+            switch (treatmentType) {
+                case EXTRACTION -> {
+                    keywords.add("영구치 발치");
+                    keywords.add("발치보험금");
+                    keywords.add("치아발거");
+                }
+
+                case ROOT_CANAL -> {
+                    keywords.add("신경치료");
+                    keywords.add("치수치료");
+                    keywords.add("근관치료");
+                }
+
+                case CROWN_IMPLANT -> {
+                    Set<String> requestedConcepts =
+                            buildRequestedProstheticConcepts(
+                                    message
+                            );
+
+                    if (requestedConcepts.isEmpty()) {
+                        keywords.add("크라운");
+                        keywords.add("임플란트");
+                        keywords.add("브릿지");
+                        keywords.add("틀니");
+                    } else {
+                        keywords.addAll(
+                                requestedConcepts
+                        );
+                    }
+                }
+
+                case FILLING -> {
+                    Set<String> requestedConcepts =
+                            buildRequestedFillingConcepts(
+                                    message
+                            );
+
+                    if (requestedConcepts.isEmpty()) {
+                        keywords.add("충전치료");
+                        keywords.add("레진");
+                        keywords.add("인레이");
+                        keywords.add("아말감");
+                    } else {
+                        keywords.addAll(
+                                requestedConcepts
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    private void addDiagnosisClaimKeywords(
+            Set<String> keywords,
+            String message
+    ) {
+        String normalizedMessage =
+                normalize(message);
+
+        List<String> concepts =
+                List.of(
+                        "화상",
+                        "부식",
+                        "디스크",
+                        "추간판",
+                        "뇌혈관",
+                        "뇌졸중",
+                        "뇌출혈",
+                        "뇌경색",
+                        "허혈성",
+                        "심장",
+                        "협심증",
+                        "심근경색",
+                        "크론",
+                        "궤양성대장염",
+                        "대장염",
+                        "원형탈모",
+                        "탈모",
+                        "용종",
+                        "폴립",
+                        "선종",
+                        "암"
+                );
+
+        concepts.stream()
+                .filter(normalizedMessage::contains)
+                .forEach(keywords::add);
     }
 
     private void addClaimTreatmentKeywords(
@@ -487,6 +620,313 @@ public class ClaimEvidenceFinder {
         }
     }
 
+    private boolean isRelevantClaimChunk(
+            TermsChunkInfo chunk,
+            ChatMessageRequest request
+    ) {
+        if (chunk == null
+                || request.getTreatmentTypes() == null
+                || request.getTreatmentTypes().isEmpty()) {
+            return false;
+        }
+
+        String text = normalize(
+                safe(chunk.clauseNo())
+                        + safe(chunk.clauseTitle())
+                        + safe(chunk.sectionTitle())
+                        + safe(chunk.chunkText())
+        );
+
+        for (TreatmentType treatmentType
+                : request.getTreatmentTypes()) {
+
+            if (isRelevantForTreatment(
+                    text,
+                    treatmentType,
+                    request
+            )) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isRelevantForTreatment(
+            String text,
+            TreatmentType treatmentType,
+            ChatMessageRequest request
+    ) {
+        return switch (treatmentType) {
+            case CAST ->
+                    containsAny(
+                            text,
+                            "깁스",
+                            "cast",
+                            "부목"
+                    );
+
+            case SURGERY ->
+                    text.contains("수술");
+
+            case HOSPITALIZATION ->
+                    containsAny(
+                            text,
+                            "입원",
+                            "병실"
+                    );
+
+            case DENTAL ->
+                    isRelevantDentalClaimChunk(
+                            text,
+                            request
+                    );
+
+            case DIAGNOSIS_ONLY ->
+                    isRelevantDiagnosisClaimChunk(
+                            text,
+                            request.getMessage()
+                    );
+
+            case OUTPATIENT ->
+                    containsAny(
+                            text,
+                            "통원",
+                            "외래",
+                            "실손의료",
+                            "처방조제"
+                    );
+
+            case DISABILITY ->
+                    text.contains("장해");
+        };
+    }
+
+    private boolean isRelevantDentalClaimChunk(
+            String text,
+            ChatMessageRequest request
+    ) {
+        if (request.getDentalInfo() == null
+                || request.getDentalInfo()
+                .getDentalTreatmentTypes() == null
+                || request.getDentalInfo()
+                .getDentalTreatmentTypes()
+                .isEmpty()) {
+            return containsAny(
+                    text,
+                    "치아",
+                    "치과"
+            );
+        }
+
+        String message = normalize(
+                request.getMessage()
+        );
+
+        for (DentalTreatmentType treatmentType
+                : request.getDentalInfo()
+                .getDentalTreatmentTypes()) {
+
+            if (matchesDentalTreatmentChunk(
+                    text,
+                    message,
+                    treatmentType
+            )) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean matchesDentalTreatmentChunk(
+            String text,
+            String message,
+            DentalTreatmentType treatmentType
+    ) {
+        return switch (treatmentType) {
+            case EXTRACTION ->
+                    containsAny(
+                            text,
+                            "영구치발치",
+                            "발치보험금",
+                            "치아발거"
+                    );
+
+            case ROOT_CANAL ->
+                    containsAny(
+                            text,
+                            "신경치료",
+                            "치수치료",
+                            "근관치료"
+                    );
+
+            case CROWN_IMPLANT -> {
+                Set<String> requestedConcepts =
+                        buildRequestedProstheticConcepts(
+                                message
+                        );
+
+                yield requestedConcepts.isEmpty()
+                        ? containsAny(
+                        text,
+                        "크라운",
+                        "임플란트",
+                        "브릿지",
+                        "고정성가공의치",
+                        "틀니",
+                        "가철성의치"
+                )
+                        : requestedConcepts.stream()
+                          .anyMatch(text::contains);
+            }
+
+            case FILLING -> {
+                Set<String> requestedConcepts =
+                        buildRequestedFillingConcepts(
+                                message
+                        );
+
+                yield requestedConcepts.isEmpty()
+                        ? containsAny(
+                        text,
+                        "충전",
+                        "레진",
+                        "인레이",
+                        "온레이",
+                        "아말감",
+                        "글래스아이노머"
+                )
+                        : requestedConcepts.stream()
+                          .anyMatch(text::contains);
+            }
+        };
+    }
+
+    private Set<String> buildRequestedProstheticConcepts(
+            String message
+    ) {
+        Set<String> concepts =
+                new LinkedHashSet<>();
+
+        if (message.contains("크라운")) {
+            concepts.add("크라운");
+        }
+
+        if (message.contains("임플란트")) {
+            concepts.add("임플란트");
+        }
+
+        if (message.contains("브릿지")
+                || message.contains("고정성가공의치")) {
+            concepts.add("브릿지");
+            concepts.add("고정성가공의치");
+        }
+
+        if (message.contains("틀니")
+                || message.contains("가철성의치")) {
+            concepts.add("틀니");
+            concepts.add("가철성의치");
+        }
+
+        return concepts;
+    }
+
+    private Set<String> buildRequestedFillingConcepts(
+            String message
+    ) {
+        Set<String> concepts =
+                new LinkedHashSet<>();
+
+        if (message.contains("레진")
+                || message.contains("복합레진")) {
+            concepts.add("레진");
+            concepts.add("복합레진");
+        }
+
+        if (message.contains("인레이")) {
+            concepts.add("인레이");
+        }
+
+        if (message.contains("온레이")) {
+            concepts.add("온레이");
+        }
+
+        if (message.contains("아말감")) {
+            concepts.add("아말감");
+        }
+
+        if (message.contains("글래스아이노머")) {
+            concepts.add("글래스아이노머");
+        }
+
+        return concepts;
+    }
+
+    private boolean isRelevantDiagnosisClaimChunk(
+            String text,
+            String message
+    ) {
+        String normalizedMessage =
+                normalize(message);
+
+        List<String> diagnosisConcepts =
+                List.of(
+                        "화상",
+                        "부식",
+                        "디스크",
+                        "추간판",
+                        "뇌혈관",
+                        "뇌졸중",
+                        "뇌출혈",
+                        "뇌경색",
+                        "허혈성",
+                        "심장",
+                        "협심증",
+                        "심근경색",
+                        "크론",
+                        "궤양성대장염",
+                        "대장염",
+                        "원형탈모",
+                        "탈모",
+                        "용종",
+                        "폴립",
+                        "선종",
+                        "암"
+                );
+
+        List<String> matchedConcepts =
+                diagnosisConcepts.stream()
+                        .filter(
+                                normalizedMessage::contains
+                        )
+                        .toList();
+
+        if (!matchedConcepts.isEmpty()) {
+            return matchedConcepts.stream()
+                    .anyMatch(text::contains);
+        }
+
+        return !normalizedMessage.isBlank()
+                && normalizedMessage.length() <= 20
+                && text.contains(normalizedMessage);
+    }
+
+    private boolean containsAny(
+            String value,
+            String... candidates
+    ) {
+        for (String candidate : candidates) {
+            if (value.contains(
+                    normalize(candidate)
+            )) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private String normalize(
             String value
     ) {
@@ -499,6 +939,7 @@ public class ClaimEvidenceFinder {
                 .replace("(", "")
                 .replace(")", "")
                 .replace("·", "")
-                .replace("-", "");
+                .replace("-", "")
+                .toLowerCase(Locale.ROOT);
     }
 }

@@ -37,7 +37,12 @@ public class DentalAnswerGenerator {
             return "치아치료 보장 확인을 위해 어떤 치아 치료를 받았는지 선택해 주세요.";
         }
 
-        List<CoverageItemDto> matchedItems = findMatchedDentalItems(analysisId, dentalInfo);
+        List<CoverageItemDto> matchedItems =
+                findMatchedDentalClaimItems(
+                        analysisId,
+                        dentalInfo,
+                        request.getMessage()
+                );
 
         if (matchedItems.isEmpty()) {
             return "입력하신 치아 치료와 직접 매칭되는 치아치료 보장 항목을 찾지 못했어요.";
@@ -93,7 +98,11 @@ public class DentalAnswerGenerator {
         }
 
         List<CoverageItemDto> matchedItems =
-                findMatchedDentalItems(analysisId, dentalInfo);
+                findMatchedDentalClaimItems(
+                        analysisId,
+                        dentalInfo,
+                        request.getMessage()
+                );
 
         if (matchedItems.isEmpty()) {
             ClaimGuideResponse claimGuide = ClaimGuideResponse.builder()
@@ -491,6 +500,33 @@ public class DentalAnswerGenerator {
             Long analysisId,
             DentalInfoRequest dentalInfo
     ) {
+        return findMatchedDentalItems(
+                analysisId,
+                dentalInfo,
+                null,
+                false
+        );
+    }
+
+    private List<CoverageItemDto> findMatchedDentalClaimItems(
+            Long analysisId,
+            DentalInfoRequest dentalInfo,
+            String message
+    ) {
+        return findMatchedDentalItems(
+                analysisId,
+                dentalInfo,
+                message,
+                true
+        );
+    }
+
+    private List<CoverageItemDto> findMatchedDentalItems(
+            Long analysisId,
+            DentalInfoRequest dentalInfo,
+            String message,
+            boolean applyClaimDetailFilter
+    ) {
         List<CoverageItemInfo> coverageItems =
                 coverageItemQueryRepository.findByAnalysisId(analysisId);
 
@@ -509,7 +545,14 @@ public class DentalAnswerGenerator {
             }
 
             detail.items().stream()
-                    .filter(item -> isMatchedDentalItem(item, dentalInfo))
+                    .filter(item ->
+                            isMatchedDentalItem(
+                                    item,
+                                    dentalInfo,
+                                    message,
+                                    applyClaimDetailFilter
+                            )
+                    )
                     .forEach(matchedItems::add);
         }
 
@@ -518,16 +561,107 @@ public class DentalAnswerGenerator {
 
     private boolean isMatchedDentalItem(
             CoverageItemDto item,
-            DentalInfoRequest dentalInfo
+            DentalInfoRequest dentalInfo,
+            String message,
+            boolean applyClaimDetailFilter
     ) {
         if (item.coverageName() == null) {
             return false;
         }
 
         String coverageName = normalize(item.coverageName());
+        String normalizedMessage =
+                message == null
+                        ? ""
+                        : normalize(message);
 
         return dentalInfo.getDentalTreatmentTypes().stream()
-                .anyMatch(type -> matchesDentalTreatmentType(coverageName, type));
+                .anyMatch(type ->
+                        matchesDentalTreatmentType(
+                                coverageName,
+                                type
+                        )
+                                && (
+                                !applyClaimDetailFilter
+                                        || matchesClaimDentalDetail(
+                                        coverageName,
+                                        normalizedMessage,
+                                        type
+                                )
+                        )
+                );
+    }
+
+    private boolean matchesClaimDentalDetail(
+            String coverageName,
+            String message,
+            DentalTreatmentType dentalTreatmentType
+    ) {
+        if (dentalTreatmentType
+                == DentalTreatmentType.CROWN_IMPLANT) {
+
+            List<String> requestedConcepts =
+                    new ArrayList<>();
+
+            if (message.contains("크라운")) {
+                requestedConcepts.add("크라운");
+            }
+
+            if (message.contains("임플란트")) {
+                requestedConcepts.add("임플란트");
+            }
+
+            if (message.contains("브릿지")
+                    || message.contains("고정성가공의치")) {
+                requestedConcepts.add("브릿지");
+                requestedConcepts.add("고정성가공의치");
+            }
+
+            if (message.contains("틀니")
+                    || message.contains("가철성의치")) {
+                requestedConcepts.add("틀니");
+                requestedConcepts.add("가철성의치");
+            }
+
+            return requestedConcepts.isEmpty()
+                    || requestedConcepts.stream()
+                    .anyMatch(coverageName::contains);
+        }
+
+        if (dentalTreatmentType
+                == DentalTreatmentType.FILLING) {
+
+            List<String> requestedConcepts =
+                    new ArrayList<>();
+
+            if (message.contains("레진")
+                    || message.contains("복합레진")) {
+                requestedConcepts.add("레진");
+                requestedConcepts.add("복합레진");
+            }
+
+            if (message.contains("인레이")) {
+                requestedConcepts.add("인레이");
+            }
+
+            if (message.contains("온레이")) {
+                requestedConcepts.add("온레이");
+            }
+
+            if (message.contains("아말감")) {
+                requestedConcepts.add("아말감");
+            }
+
+            if (message.contains("글래스아이노머")) {
+                requestedConcepts.add("글래스아이노머");
+            }
+
+            return requestedConcepts.isEmpty()
+                    || requestedConcepts.stream()
+                    .anyMatch(coverageName::contains);
+        }
+
+        return true;
     }
 
     private boolean matchesDentalTreatmentType(

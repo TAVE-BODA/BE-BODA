@@ -46,17 +46,32 @@ public class DocumentAnswerGenerator {
             Long termsDocumentId,
             ChatMessageRequest request
     ) {
-        List<String> requiredDocuments =
-                buildRequiredDocuments(request);
+        return generateStructuredAnswer(
+                termsDocumentId,
+                request,
+                Map.of()
+        );
+    }
+
+    public DocumentAnswerResult generateStructuredAnswer(
+            Long termsDocumentId,
+            ChatMessageRequest request,
+            Map<TreatmentType, String> claimStatuses
+    ) {
+        List<DocumentCandidate> documents =
+                buildDocumentCandidates(
+                        request,
+                        claimStatuses
+                );
 
         String messageContent =
                 buildDocumentAnswer(
-                        requiredDocuments
+                        documents
                 );
 
         DocumentGuideResponse documentGuide =
                 buildDocumentGuide(
-                        requiredDocuments
+                        documents
                 );
 
         // 약관이 없는 경우 필요서류만 반환
@@ -70,7 +85,10 @@ public class DocumentAnswerGenerator {
         }
 
         List<String> keywords =
-                buildSearchKeywords(request);
+                buildSearchKeywords(
+                        request,
+                        claimStatuses
+                );
 
         List<TermsChunkInfo> searchedChunks =
                 termsChunkQueryRepository
@@ -84,7 +102,8 @@ public class DocumentAnswerGenerator {
         List<TermsChunkInfo> evidenceChunks =
                 filterEvidenceChunks(
                         searchedChunks,
-                        request
+                        request,
+                        claimStatuses
                 );
 
         boolean hasSources =
@@ -118,7 +137,8 @@ public class DocumentAnswerGenerator {
     // 칩3에 관련 있는 근거만 선택
     private List<TermsChunkInfo> filterEvidenceChunks(
             List<TermsChunkInfo> chunks,
-            ChatMessageRequest request
+            ChatMessageRequest request,
+            Map<TreatmentType, String> claimStatuses
     ) {
         if (chunks == null || chunks.isEmpty()) {
             return List.of();
@@ -129,18 +149,21 @@ public class DocumentAnswerGenerator {
                         .filter(chunk ->
                                 isRelevantDocumentChunk(
                                         chunk,
-                                        request
+                                        request,
+                                        claimStatuses
                                 )
                         )
                         .sorted((first, second) ->
                                 Integer.compare(
                                         calculateEvidenceScore(
                                                 second,
-                                                request
+                                                request,
+                                                claimStatuses
                                         ),
                                         calculateEvidenceScore(
                                                 first,
-                                                request
+                                                request,
+                                                claimStatuses
                                         )
                                 )
                         )
@@ -221,7 +244,8 @@ public class DocumentAnswerGenerator {
 
     private boolean isRelevantDocumentChunk(
             TermsChunkInfo chunk,
-            ChatMessageRequest request
+            ChatMessageRequest request,
+            Map<TreatmentType, String> claimStatuses
     ) {
         // 상품 전체 공통 청구서류 안내는 항상 우선
         if (isRepresentativeDocumentGuide(chunk)) {
@@ -233,18 +257,23 @@ public class DocumentAnswerGenerator {
             return false;
         }
 
-        if (request.getTreatmentTypes() == null
-                || request.getTreatmentTypes().isEmpty()) {
+        List<TreatmentType> relevantTreatmentTypes =
+                getRelevantTreatmentTypes(
+                        request,
+                        claimStatuses
+                );
+
+        if (relevantTreatmentTypes.isEmpty()) {
 
             return containsCommonClaimDocuments(chunk);
         }
 
-        return request.getTreatmentTypes()
+        return relevantTreatmentTypes
                 .stream()
                 .filter(treatmentType ->
                         treatmentType != TreatmentType.OUTPATIENT
                                 || !shouldMergeOutpatientDocuments(
-                                request
+                                relevantTreatmentTypes
                         )
                 )
                 .anyMatch(treatmentType ->
@@ -258,7 +287,8 @@ public class DocumentAnswerGenerator {
     // 근거 우선순위 계산
     private int calculateEvidenceScore(
             TermsChunkInfo chunk,
-            ChatMessageRequest request
+            ChatMessageRequest request,
+            Map<TreatmentType, String> claimStatuses
     ) {
         int score = 0;
 
@@ -272,14 +302,19 @@ public class DocumentAnswerGenerator {
 
         // 대표 예시 표는 모든 치료명을 포함하므로
         // 치료별 특약 조항과 동일한 가중치를 주지 않는다.
-        if (!representativeGuide
-                && request.getTreatmentTypes() != null) {
+        if (!representativeGuide) {
+            List<TreatmentType> relevantTreatmentTypes =
+                    getRelevantTreatmentTypes(
+                            request,
+                            claimStatuses
+                    );
+
             for (TreatmentType treatmentType
-                    : request.getTreatmentTypes()) {
+                    : relevantTreatmentTypes) {
 
                 if (treatmentType == TreatmentType.OUTPATIENT
                         && shouldMergeOutpatientDocuments(
-                        request
+                        relevantTreatmentTypes
                 )) {
                     continue;
                 }
@@ -422,36 +457,42 @@ public class DocumentAnswerGenerator {
                 .replace("-", "");
     }
 
-    // 사용자 입력 조건을 기준으로 필요한 서류 후보 목록 생성
-    private List<String> buildRequiredDocuments(
-            ChatMessageRequest request
+    // 사용자 입력과 칩1의 치료별 매칭 결과를 기준으로 서류 후보 목록 생성
+    private List<DocumentCandidate> buildDocumentCandidates(
+            ChatMessageRequest request,
+            Map<TreatmentType, String> claimStatuses
     ) {
-        Set<String> documents =
-                new LinkedHashSet<>();
+        Map<String, DocumentCandidate> documents =
+                new LinkedHashMap<>();
 
-        documents.add("청구서(회사양식)");
-        documents.add("신분증");
+        addDocument(documents, "청구서(회사양식)", true);
+        addDocument(documents, "신분증", true);
 
         if (request.getIncidentType()
                 == IncidentType.INJURY) {
 
-            documents.add("재해 입증서류");
+            // 사고 유형에 따라 필요한 서류가 달라 공통 필수로 표시하지 않는다.
+            addDocument(documents, "재해 입증서류", false);
         }
 
-        if (request.getTreatmentTypes() == null
-                || request.getTreatmentTypes().isEmpty()) {
+        List<TreatmentType> relevantTreatmentTypes =
+                getRelevantTreatmentTypes(
+                        request,
+                        claimStatuses
+                );
 
-            return new ArrayList<>(documents);
+        if (relevantTreatmentTypes.isEmpty()) {
+            return new ArrayList<>(documents.values());
         }
 
         for (TreatmentType treatmentType
-                : request.getTreatmentTypes()) {
+                : relevantTreatmentTypes) {
 
             // 수술 또는 치과치료 서류로 통원 사실을 함께 확인할 수 있는 경우
             // 별도의 통원 확인서를 중복 안내하지 않는다.
             if (treatmentType == TreatmentType.OUTPATIENT
                     && shouldMergeOutpatientDocuments(
-                    request
+                    relevantTreatmentTypes
             )) {
                 continue;
             }
@@ -459,78 +500,179 @@ public class DocumentAnswerGenerator {
             addTreatmentDocuments(
                     documents,
                     treatmentType,
-                    request
+                    request,
+                    isMatchedCoverage(
+                            treatmentType,
+                            claimStatuses
+                    )
             );
         }
 
-        return new ArrayList<>(documents);
+        return new ArrayList<>(documents.values());
     }
 
     private boolean shouldMergeOutpatientDocuments(
-            ChatMessageRequest request
+            List<TreatmentType> treatmentTypes
     ) {
-        return request.getTreatmentTypes() != null
+        return treatmentTypes != null
                 && (
-                request.getTreatmentTypes().contains(
+                treatmentTypes.contains(
                         TreatmentType.SURGERY
                 )
-                        || request.getTreatmentTypes().contains(
+                        || treatmentTypes.contains(
                         TreatmentType.DENTAL
                 )
         );
     }
 
+    private List<TreatmentType> getRelevantTreatmentTypes(
+            ChatMessageRequest request,
+            Map<TreatmentType, String> claimStatuses
+    ) {
+        if (request.getTreatmentTypes() == null
+                || request.getTreatmentTypes().isEmpty()) {
+            return List.of();
+        }
+
+        if (claimStatuses == null || claimStatuses.isEmpty()) {
+            return request.getTreatmentTypes();
+        }
+
+        return request.getTreatmentTypes()
+                .stream()
+                .filter(treatmentType ->
+                        !"NOT_AVAILABLE".equals(
+                                claimStatuses.get(treatmentType)
+                        )
+                )
+                .toList();
+    }
+
+    private boolean isMatchedCoverage(
+            TreatmentType treatmentType,
+            Map<TreatmentType, String> claimStatuses
+    ) {
+        if (claimStatuses == null
+                || !claimStatuses.containsKey(treatmentType)) {
+            return true;
+        }
+
+        return "POSSIBLE".equals(
+                claimStatuses.get(treatmentType)
+        );
+    }
+
+    private void addDocument(
+            Map<String, DocumentCandidate> documents,
+            String name,
+            boolean required
+    ) {
+        documents.merge(
+                name,
+                new DocumentCandidate(name, required),
+                (existing, added) ->
+                        new DocumentCandidate(
+                                name,
+                                existing.required()
+                                        || added.required()
+                        )
+        );
+    }
+
     // 치료 유형별 필요서류 추가
     private void addTreatmentDocuments(
-            Set<String> documents,
+            Map<String, DocumentCandidate> documents,
             TreatmentType treatmentType,
-            ChatMessageRequest request
+            ChatMessageRequest request,
+            boolean matchedCoverage
     ) {
         switch (treatmentType) {
             case DIAGNOSIS_ONLY -> {
-                documents.add("진단서");
-                documents.add(
-                        "진단사실 확인서류 또는 검사결과지"
+                addDocument(
+                        documents,
+                        "진단서",
+                        matchedCoverage
+                );
+                addDocument(
+                        documents,
+                        "진단사실 확인서류 또는 검사결과지",
+                        false
                 );
             }
 
             case SURGERY ->
-                    documents.add("수술 확인서");
+                    addDocument(
+                            documents,
+                            "수술 확인서",
+                            matchedCoverage
+                    );
 
             case HOSPITALIZATION ->
-                    documents.add("입·퇴원 확인서");
+                    addDocument(
+                            documents,
+                            "입·퇴원 확인서",
+                            matchedCoverage
+                    );
 
             case OUTPATIENT ->
-                    documents.add("통원 확인서");
+                    addDocument(
+                            documents,
+                            "통원 확인서",
+                            matchedCoverage
+                    );
 
             case CAST -> {
-                documents.add(
-                        "깁스 치료 증명서"
+                addDocument(
+                        documents,
+                        "깁스 치료 증명서",
+                        matchedCoverage
                 );
-                documents.add("진료기록부");
+                addDocument(
+                        documents,
+                        "진료기록부",
+                        false
+                );
             }
 
             case DENTAL -> {
-                documents.add("치과치료 확인서");
-                documents.add("치과진료기록");
+                addDocument(
+                        documents,
+                        "치과치료 확인서",
+                        matchedCoverage
+                );
+                addDocument(
+                        documents,
+                        "치과진료기록",
+                        matchedCoverage
+                );
 
                 if (isDentalExtraction(request)) {
-                    documents.add(
-                            "영구치 발치 전후 X-ray 사진"
+                    addDocument(
+                            documents,
+                            "영구치 발치 전후 X-ray 사진",
+                            matchedCoverage
                     );
                 } else {
-                    documents.add(
-                            "치과치료 전후 X-ray 사진"
+                    addDocument(
+                            documents,
+                            "치과치료 전후 X-ray 사진",
+                            matchedCoverage
                     );
                 }
 
-                documents.add(
-                        "구강 내 사진 또는 이에 준하는 판독 자료"
+                addDocument(
+                        documents,
+                        "구강 내 사진 또는 이에 준하는 판독 자료",
+                        false
                 );
             }
 
             case DISABILITY ->
-                    documents.add("장해진단서");
+                    addDocument(
+                            documents,
+                            "장해진단서",
+                            matchedCoverage
+                    );
         }
     }
 
@@ -549,7 +691,8 @@ public class DocumentAnswerGenerator {
 
     // 약관 chunk 검색 키워드 생성
     private List<String> buildSearchKeywords(
-            ChatMessageRequest request
+            ChatMessageRequest request,
+            Map<TreatmentType, String> claimStatuses
     ) {
         Set<String> keywords =
                 new LinkedHashSet<>();
@@ -567,18 +710,23 @@ public class DocumentAnswerGenerator {
             keywords.add("재해 입증서류");
         }
 
-        if (request.getTreatmentTypes() == null
-                || request.getTreatmentTypes().isEmpty()) {
+        List<TreatmentType> relevantTreatmentTypes =
+                getRelevantTreatmentTypes(
+                        request,
+                        claimStatuses
+                );
+
+        if (relevantTreatmentTypes.isEmpty()) {
 
             return new ArrayList<>(keywords);
         }
 
         for (TreatmentType treatmentType
-                : request.getTreatmentTypes()) {
+                : relevantTreatmentTypes) {
 
             if (treatmentType == TreatmentType.OUTPATIENT
                     && shouldMergeOutpatientDocuments(
-                    request
+                    relevantTreatmentTypes
             )) {
                 continue;
             }
@@ -646,18 +794,18 @@ public class DocumentAnswerGenerator {
 
     // 사용자에게 보여줄 필요서류 답변 생성
     private String buildDocumentAnswer(
-            List<String> requiredDocuments
+            List<DocumentCandidate> documents
     ) {
         List<String> mandatoryDocuments =
-                requiredDocuments.stream()
-                        .filter(this::isRequiredDocument)
+                documents.stream()
+                        .filter(DocumentCandidate::required)
+                        .map(DocumentCandidate::name)
                         .toList();
 
         List<String> optionalDocuments =
-                requiredDocuments.stream()
-                        .filter(document ->
-                                !isRequiredDocument(document)
-                        )
+                documents.stream()
+                        .filter(document -> !document.required())
+                        .map(DocumentCandidate::name)
                         .toList();
 
         StringBuilder builder = new StringBuilder(
@@ -702,12 +850,12 @@ public class DocumentAnswerGenerator {
 
     // 프론트 카드 UI에서 사용할 documentGuide 생성
     private DocumentGuideResponse buildDocumentGuide(
-            List<String> requiredDocuments
+            List<DocumentCandidate> documents
     ) {
         return DocumentGuideResponse.builder()
                 .documents(
                         buildDocumentItems(
-                                requiredDocuments
+                                documents
                         )
                 )
                 .hasSources(false)
@@ -717,37 +865,25 @@ public class DocumentAnswerGenerator {
 
     private List<DocumentGuideResponse.DocumentItem>
     buildDocumentItems(
-            List<String> requiredDocuments
+            List<DocumentCandidate> documents
     ) {
-        return requiredDocuments.stream()
+        return documents.stream()
                 .map(document ->
                         DocumentGuideResponse
                                 .DocumentItem
                                 .builder()
-                                .name(document)
+                                .name(document.name())
                                 .description(
                                         buildDocumentDescription(
-                                                document
+                                                document.name()
                                         )
                                 )
-                                .required(
-                                        isRequiredDocument(
-                                                document
-                                        )
-                                )
+                                .required(document.required())
                                 .hasSources(false)
                                 .sourceChunkIds(List.of())
                                 .build()
                 )
                 .toList();
-    }
-
-    private boolean isRequiredDocument(
-            String document
-    ) {
-        return !"구강 내 사진 또는 이에 준하는 판독 자료".equals(
-                document
-        );
     }
 
     // 각 서류 카드에 해당 서류를 직접 뒷받침하는 약관 chunkId 연결
@@ -922,13 +1058,13 @@ public class DocumentAnswerGenerator {
                     "치과 치료 종류와 치료 내용을 확인하기 위한 서류예요.";
 
             case "치과진료기록" ->
-                    "치과 치료 내역과 치료 경과를 확인하기 위한 필수 서류예요.";
+                    "치과 치료 내역과 치료 경과를 확인하기 위한 서류예요.";
 
             case "영구치 발치 전후 X-ray 사진" ->
-                    "영구치 발치 전후의 치아 상태를 확인하기 위한 필수 자료예요.";
+                    "영구치 발치 전후의 치아 상태를 확인하기 위한 자료예요.";
 
             case "치과치료 전후 X-ray 사진" ->
-                    "치과 치료 전후의 치아 상태를 확인하기 위한 필수 자료예요.";
+                    "치과 치료 전후의 치아 상태를 확인하기 위한 자료예요.";
 
             case "구강 내 사진 또는 이에 준하는 판독 자료" ->
                     "보험사가 심사에 필요하다고 판단하는 경우 추가로 요청할 수 있어요.";
@@ -939,5 +1075,11 @@ public class DocumentAnswerGenerator {
             default ->
                     "보험금 청구 심사에 필요할 수 있는 서류예요.";
         };
+    }
+
+    private record DocumentCandidate(
+            String name,
+            boolean required
+    ) {
     }
 }

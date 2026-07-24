@@ -94,19 +94,31 @@ public class ChatAnswerService {
                     !dentalExclusionSources.isEmpty();
 
             ClaimAnswerResult result =
-                    generateClaimAnswerResult(
-                            analysisId,
-                            request,
-                            dentalExclusionDetected
+                    limitClaimCautions(
+                            generateClaimAnswerResult(
+                                    analysisId,
+                                    request,
+                                    dentalExclusionDetected
+                            ),
+                            3
                     );
 
-            List<AnswerSource> sources =
-                    dentalExclusionDetected
-                            ? dentalExclusionSources
-                            : claimEvidenceFinder.findSources(
-                            chatSession.getTermsDocumentId(),
-                            request
-                    );
+            List<AnswerSource> sources;
+
+            if (dentalExclusionDetected) {
+                sources = dentalExclusionSources;
+            } else if (shouldBindGenericClaimSources(
+                    result.claimGuide()
+            )) {
+                sources =
+                        claimEvidenceFinder.findSources(
+                                chatSession
+                                        .getTermsDocumentId(),
+                                request
+                        );
+            } else {
+                sources = List.of();
+            }
 
             ClaimGuideResponse claimGuideWithSources =
                     bindClaimSources(
@@ -148,12 +160,19 @@ public class ChatAnswerService {
 
         // 칩3: 필요 서류
         if (questionType == QuestionType.CHIP_DOCUMENTS) {
+            Map<TreatmentType, String> claimStatuses =
+                    resolveDocumentClaimStatuses(
+                            analysisId,
+                            chatSession.getTermsDocumentId(),
+                            request
+                    );
 
             DocumentAnswerResult result =
                     documentAnswerGenerator
                             .generateStructuredAnswer(
                                     chatSession.getTermsDocumentId(),
-                                    request
+                                    request,
+                                    claimStatuses
                             );
 
             List<AnswerSource> sources =
@@ -403,6 +422,11 @@ public class ChatAnswerService {
             }
         }
 
+        cautions = prioritizeAndLimitClaimCautions(
+                cautions,
+                3
+        );
+
         String mergedStatus =
                 determineMergedClaimStatus(statuses);
 
@@ -422,6 +446,155 @@ public class ChatAnswerService {
                 messageContent.toString().trim(),
                 claimGuide
         );
+    }
+
+    private ClaimAnswerResult limitClaimCautions(
+            ClaimAnswerResult result,
+            int limit
+    ) {
+        if (result == null || result.claimGuide() == null) {
+            return result;
+        }
+
+        ClaimGuideResponse claimGuide =
+                result.claimGuide();
+
+        ClaimGuideResponse limitedClaimGuide =
+                ClaimGuideResponse.builder()
+                        .claimStatus(
+                                claimGuide.getClaimStatus()
+                        )
+                        .summary(
+                                claimGuide.getSummary()
+                        )
+                        .reasons(
+                                claimGuide.getReasons()
+                        )
+                        .cautions(
+                                prioritizeAndLimitClaimCautions(
+                                        claimGuide.getCautions(),
+                                        limit
+                                )
+                        )
+                        .hasSources(
+                                claimGuide.getHasSources()
+                        )
+                        .sourceChunkIds(
+                                claimGuide.getSourceChunkIds()
+                        )
+                        .build();
+
+        return new ClaimAnswerResult(
+                result.messageContent(),
+                limitedClaimGuide
+        );
+    }
+
+    private Map<TreatmentType, String> resolveDocumentClaimStatuses(
+            Long analysisId,
+            Long termsDocumentId,
+            ChatMessageRequest request
+    ) {
+        if (analysisId == null
+                || request.getTreatmentTypes() == null
+                || request.getTreatmentTypes().isEmpty()) {
+            return Map.of();
+        }
+
+        boolean dentalExclusionDetected =
+                request.getTreatmentTypes().contains(
+                        TreatmentType.DENTAL
+                )
+                        && !claimEvidenceFinder
+                        .findDentalExclusionSources(
+                                termsDocumentId,
+                                request
+                        )
+                        .isEmpty();
+
+        Map<TreatmentType, String> statuses =
+                new LinkedHashMap<>();
+
+        for (TreatmentType treatmentType
+                : request.getTreatmentTypes()) {
+
+            if (statuses.containsKey(treatmentType)) {
+                continue;
+            }
+
+            ClaimAnswerResult claimResult =
+                    generateSingleClaimAnswerResult(
+                            analysisId,
+                            request,
+                            treatmentType,
+                            dentalExclusionDetected
+                    );
+
+            if (claimResult.claimGuide() == null
+                    || claimResult.claimGuide()
+                    .getClaimStatus() == null) {
+                continue;
+            }
+
+            statuses.put(
+                    treatmentType,
+                    claimResult.claimGuide()
+                            .getClaimStatus()
+            );
+        }
+
+        return Map.copyOf(statuses);
+    }
+
+    static List<String> prioritizeAndLimitClaimCautions(
+            List<String> cautions,
+            int limit
+    ) {
+        if (cautions == null
+                || cautions.isEmpty()
+                || limit <= 0) {
+            return List.of();
+        }
+
+        List<String> result = new ArrayList<>();
+        List<String> priorityKeywords = List.of(
+                "입력하신",
+                "실제 병명",
+                "실제 인정",
+                "부목",
+                "제외",
+                "감액",
+                "면책",
+                "실제 지급 여부"
+        );
+
+        for (String keyword : priorityKeywords) {
+            cautions.stream()
+                    .filter(caution ->
+                            caution != null
+                                    && caution.contains(keyword)
+                                    && !result.contains(caution)
+                    )
+                    .findFirst()
+                    .ifPresent(result::add);
+
+            if (result.size() >= limit) {
+                return List.copyOf(result);
+            }
+        }
+
+        for (String caution : cautions) {
+            if (caution != null
+                    && !result.contains(caution)) {
+                result.add(caution);
+            }
+
+            if (result.size() >= limit) {
+                break;
+            }
+        }
+
+        return List.copyOf(result);
     }
 
     // 복수 결과의 전체 상태 결정
@@ -1056,6 +1229,46 @@ public class ChatAnswerService {
                         sourceChunkIds
                 )
                 .build();
+    }
+
+    static boolean shouldBindGenericClaimSources(
+            ClaimGuideResponse claimGuide
+    ) {
+        if (claimGuide == null
+                || !"NOT_AVAILABLE".equals(
+                claimGuide.getClaimStatus()
+        )) {
+            return true;
+        }
+
+        String summary =
+                claimGuide.getSummary() == null
+                        ? ""
+                        : claimGuide.getSummary();
+
+        String reasons =
+                claimGuide.getReasons() == null
+                        ? ""
+                        : String.join(
+                        " ",
+                        claimGuide.getReasons()
+                );
+
+        String normalizedText =
+                (summary + " " + reasons)
+                        .replaceAll("\\s+", "");
+
+        boolean coverageNotFound =
+                normalizedText.contains("찾지못")
+                        || normalizedText.contains("매칭되는보장")
+                        || normalizedText.contains("보장이확인되지않");
+
+        boolean explicitExclusion =
+                normalizedText.contains("제외")
+                        || normalizedText.contains("보장대상이아니")
+                        || normalizedText.contains("지급하지않");
+
+        return !coverageNotFound || explicitExclusion;
     }
 
     // CHIP_DOCUMENTS 결과에 약관 근거 chunkId 연결
