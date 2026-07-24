@@ -103,13 +103,22 @@ public class ChatAnswerService {
                             3
                     );
 
-            List<AnswerSource> sources =
-                    dentalExclusionDetected
-                            ? dentalExclusionSources
-                            : claimEvidenceFinder.findSources(
-                            chatSession.getTermsDocumentId(),
-                            request
-                    );
+            List<AnswerSource> sources;
+
+            if (dentalExclusionDetected) {
+                sources = dentalExclusionSources;
+            } else if (shouldBindGenericClaimSources(
+                    result.claimGuide()
+            )) {
+                sources =
+                        claimEvidenceFinder.findSources(
+                                chatSession
+                                        .getTermsDocumentId(),
+                                request
+                        );
+            } else {
+                sources = List.of();
+            }
 
             ClaimGuideResponse claimGuideWithSources =
                     bindClaimSources(
@@ -1220,6 +1229,46 @@ public class ChatAnswerService {
                         sourceChunkIds
                 )
                 .build();
+    }
+
+    static boolean shouldBindGenericClaimSources(
+            ClaimGuideResponse claimGuide
+    ) {
+        if (claimGuide == null
+                || !"NOT_AVAILABLE".equals(
+                claimGuide.getClaimStatus()
+        )) {
+            return true;
+        }
+
+        String summary =
+                claimGuide.getSummary() == null
+                        ? ""
+                        : claimGuide.getSummary();
+
+        String reasons =
+                claimGuide.getReasons() == null
+                        ? ""
+                        : String.join(
+                        " ",
+                        claimGuide.getReasons()
+                );
+
+        String normalizedText =
+                (summary + " " + reasons)
+                        .replaceAll("\\s+", "");
+
+        boolean coverageNotFound =
+                normalizedText.contains("찾지못")
+                        || normalizedText.contains("매칭되는보장")
+                        || normalizedText.contains("보장이확인되지않");
+
+        boolean explicitExclusion =
+                normalizedText.contains("제외")
+                        || normalizedText.contains("보장대상이아니")
+                        || normalizedText.contains("지급하지않");
+
+        return !coverageNotFound || explicitExclusion;
     }
 
     // CHIP_DOCUMENTS 결과에 약관 근거 chunkId 연결

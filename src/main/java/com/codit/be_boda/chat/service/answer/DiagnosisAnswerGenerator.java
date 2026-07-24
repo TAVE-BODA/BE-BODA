@@ -105,9 +105,7 @@ public class DiagnosisAnswerGenerator {
                     .claimStatus("NOT_AVAILABLE")
                     .summary("입력하신 진단명과 매칭되는 보장 후보를 찾지 못했어요.")
                     .reasons(List.of(
-                            "현재 증권 분석 결과에서 "
-                                    + diagnosisMessage
-                                    + "과 직접 매칭되는 진단비 보장이 확인되지 않았어요."
+                            "현재 증권 분석 결과에서 입력하신 질환과 직접 매칭되는 진단비 보장이 확인되지 않았어요."
                     ))
                     .cautions(List.of(
                             "다른 특약이나 약관 원문에 관련 보장이 있는지 추가 확인이 필요할 수 있어요.",
@@ -270,7 +268,7 @@ public class DiagnosisAnswerGenerator {
         );
     }
 
-   // 입력된 자유 입력이 애매한지 판단
+    // 입력된 자유 입력이 애매한지 판단
     private boolean isAmbiguousDiagnosisMessage(String message) {
         if (message == null || message.isBlank()) {
             return true;
@@ -332,7 +330,7 @@ public class DiagnosisAnswerGenerator {
     }
 
 
-     // 진단지 계열인지 판단
+    // 진단지 계열인지 판단
     private boolean isDiagnosisCoverage(CoverageItemInfo coverageItem, CoverageItemDto item) {
         String coverageType = coverageItem.coverageType();
         String coverageName = item.coverageName();
@@ -402,17 +400,48 @@ public class DiagnosisAnswerGenerator {
             keywords.add("소화계");
         }
 
+        if (normalizedMessage.contains("용종")
+                || normalizedMessage.contains("폴립")
+                || normalizedMessage.contains("선종")) {
+            keywords.add("용종");
+            keywords.add("폴립");
+            keywords.add("선종");
+        }
+
         if (normalizedMessage.contains("암")) {
             keywords.add("암");
             keywords.add("소액암");
             keywords.add("유사암");
         }
 
-        if (keywords.isEmpty() && !isAmbiguousDiagnosisMessage(message)) {
-            keywords.add(message);
+        if (keywords.isEmpty()
+                && isSimpleDiagnosisName(message)) {
+            keywords.add(message.trim());
         }
 
         return keywords;
+    }
+
+    private boolean isSimpleDiagnosisName(
+            String message
+    ) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+
+        String normalizedMessage =
+                normalize(message);
+
+        if (normalizedMessage.length() > 20) {
+            return false;
+        }
+
+        return !normalizedMessage.contains("받았")
+                && !normalizedMessage.contains("했어")
+                && !normalizedMessage.contains("했어요")
+                && !normalizedMessage.contains("병원")
+                && !normalizedMessage.contains("검사")
+                && !normalizedMessage.contains("치료");
     }
 
     private boolean matchesAnyKeyword(String coverageName, List<String> keywords) {
