@@ -260,7 +260,9 @@ public class ChatAnswerService {
             boolean dentalExclusionDetected
     ) {
         List<TreatmentType> treatmentTypes =
-                request.getTreatmentTypes();
+                resolveEffectiveTreatmentTypes(
+                        request.getTreatmentTypes()
+                );
 
         if (treatmentTypes == null || treatmentTypes.isEmpty()) {
             String messageContent =
@@ -657,7 +659,9 @@ public class ChatAnswerService {
             ChatMessageRequest request
     ) {
         List<TreatmentType> treatmentTypes =
-                request.getTreatmentTypes();
+                resolveEffectiveTreatmentTypes(
+                        request.getTreatmentTypes()
+                );
 
         if (treatmentTypes == null
                 || treatmentTypes.isEmpty()) {
@@ -1269,6 +1273,34 @@ public class ChatAnswerService {
                         || normalizedText.contains("지급하지않");
 
         return !coverageNotFound || explicitExclusion;
+    }
+
+    /**
+     * 치아 치료와 통원·외래를 함께 선택한 경우 통원은 치료 장소를
+     * 나타내는 보조 정보다. 별도의 통원 보장 결과로 다시 평가하면
+     * 치아 보장이 확인돼도 전체 상태가 NEEDS_REVIEW로 낮아지므로,
+     * 칩1·칩2에서는 치아 치료 결과만 사용한다.
+     */
+    static List<TreatmentType> resolveEffectiveTreatmentTypes(
+            List<TreatmentType> treatmentTypes
+    ) {
+        if (treatmentTypes == null
+                || treatmentTypes.isEmpty()) {
+            return List.of();
+        }
+
+        List<TreatmentType> effectiveTypes =
+                new ArrayList<>(
+                        new java.util.LinkedHashSet<>(
+                                treatmentTypes
+                        )
+                );
+
+        if (effectiveTypes.contains(TreatmentType.DENTAL)) {
+            effectiveTypes.remove(TreatmentType.OUTPATIENT);
+        }
+
+        return List.copyOf(effectiveTypes);
     }
 
     // CHIP_DOCUMENTS 결과에 약관 근거 chunkId 연결

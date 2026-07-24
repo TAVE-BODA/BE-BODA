@@ -113,7 +113,8 @@ public class AsyncPolicyAnalysisService {
         String response = call(prompt);
         try {
             String cleaned = response.replaceAll("```json|```", "").trim();
-            return objectMapper.readValue(cleaned, new TypeReference<>() {});
+            return objectMapper.readValue(cleaned, new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.warn("[ANALYSIS] 증권 정보 파싱 실패 | {}", e.getMessage());
             return Map.of("parseError", e.getMessage());
@@ -341,7 +342,8 @@ public class AsyncPolicyAnalysisService {
         String response = call(prompt);
         try {
             String cleaned = response.replaceAll("```json|```", "").trim();
-            return objectMapper.readValue(cleaned, new TypeReference<>() {});
+            return objectMapper.readValue(cleaned, new TypeReference<>() {
+            });
         } catch (Exception e) {
             log.warn("[ANALYSIS] 보장 카드 파싱 실패 | type={} | {}", coverageType, e.getMessage());
             return Map.of("isDetected", false);
@@ -391,7 +393,7 @@ public class AsyncPolicyAnalysisService {
                         ],
                         "exclusionKeywords": "면책 키워드 요약"
                     }
-                  
+                    
                     수술 카드는 특약명 자체가 아니라 보험금 지급 사유가 "수술을 받았을 때" 지급되는 보장만 포함합니다.
                     지급사유의 핵심이 "수술"이면 수술 카드에 포함합니다.
                     
@@ -405,9 +407,9 @@ public class AsyncPolicyAnalysisService {
                     
                     `coverageName`에는 보험증권에 적힌 특약명을 그대로 넣지 말고, 사용자가 이해하기 쉬운 핵심 보장항목명으로 정제해서 넣어 주세요.
                     특약명 끝에 붙는 `I`, `II`, `III`, `IV`, `V`, `VI`, `LT`, `L`, `IILT`, `IIILT`, `무배당`, `무해약환급금형`, `갱신형`, `비갱신형`, `특별약관`, `특약` 같은 버전 코드나 상품 형태 문구는 제거하고, 실제 보장 의미를 나타내는 핵심 단어만 남겨 주세요.
-
+                    
                     "condition" : "기간/조건명"에서 '계약일부터'의 명칭은 필요없으니 예시대로 작성해줘.
-
+                    
                     수술 종별 기준표가 증권에 없고 약관 확인이 필요한 경우에는
                     coverageName을 "수술 종별 기준"으로 하는 item을 추가하고,
                     condition에는 "약관이 필요해요",
@@ -432,13 +434,13 @@ public class AsyncPolicyAnalysisService {
                     입원 보장은 입원 1일당 지급되는 금액을 중심으로 추출해.
                     증권에 여러 입원 보장항목이 나열되어 있으면 하나로 합치지 말고 각각 별도의 item으로 분리해줘.
                     예: "질병 입원일당", "재해 입원일당", "2·3인실 입원", "상급병실 1인실", "상급병실 1인실(종합병원)", "상급병실 1인실(상급종합병원)"은 각각 다른 item으로 생성한다.
-
+                    
                     담보명과 보장금액은 반드시 같은 보장 블록에서 추출해.
                     하나의 보장 블록은 해당 특약명 또는 보장항목 제목부터 다음 특약명 또는 다음 보장항목 제목 직전까지야.
                     현재 블록 밖의 위쪽·아래쪽 금액을 가져오거나, 표에서 인접한 다른 행의 금액을 연결하면 안 돼.
                     특히 2인실, 3인실, 1인실 및 "종합병원이상", "상급종합병원"은 서로 다른 담보이므로 이름과 금액을 교차 연결하지 마.
                     금액을 확실히 같은 블록에서 확인할 수 없으면 추측하지 말고 coverageAmount를 null로 작성해.
-
+                    
                     다음 두 1인실 담보는 반드시 서로 다른 item으로 유지해.
                     - "상급병실 1인실(종합병원이상)"
                     - "상급병실 1인실(상급종합병원)"
@@ -530,7 +532,7 @@ public class AsyncPolicyAnalysisService {
                     골절·재해 보장은 재해로 인한 골절, 화상, 장해, 깁스 치료, 골절 수술 등에 대해 지급되는 보장이야.
                     증권에 여러 보장항목이 나열되어 있으면 하나로 합치지 말고 각각 별도의 item으로 분리해.
                     예: "재해골절 진단", "5대 재해골절 진단", "재해골절 수술", "재해 화상", "재해 장해", "깁스(Cast) 치료"는 각각 다른 item으로 생성한다.
-
+                    
                     담보명과 보장금액은 반드시 같은 번호 또는 같은 보장 블록에서 추출해.
                     특히 "재해골절 진단"과 "5대 재해골절 진단"은 서로 다른 담보이므로 인접한 위·아래 행의 금액을 서로 바꾸어 연결하면 안 돼.
                     예를 들어 원문에서 재해골절진단보험금이 300,000원이고 5대재해골절진단보험금이 700,000원이면 각각의 coverageName에 그 금액을 그대로 연결해.
@@ -567,12 +569,10 @@ public class AsyncPolicyAnalysisService {
                     치아 보장은 치아 치료에 지급되는 보장항목을 추출해.
                     하나의 치아 특약 안에 여러 치료 항목이 묶여 있는 경우가 많으므로, 치료 항목별로 각각 별도의 item으로 분리해.
                     
-                    치아 치료 항목은 같은 면책기간을 가진 치료끼리 묶어서 추출해.
-                    예: 보철 치료는 2년 이내/2년 초과, 크라운 치료는 1년 이내/1년 초과, 보존 치료는 1년 이내/1년 초과처럼 구분해줘.
-                    
-                    그룹 제목이 필요한 경우에는 coverageName을 그룹명으로 하는 item을 먼저 추가해.
-                    이때 coverageAmount는 null로 작성해.
-                    예: coverageName은 "영구치 발치 치료", condition은 "2년 이내", coverageAmount는 null.
+                    치아 치료 항목은 실제 지급 대상 치료별로 분리해서 추출해.
+                    그룹 제목만 있는 행은 item으로 추가하지 말고, 실제 치료명과 지급금액이 함께 확인되는 행만 추출해.
+                    다른 치료 항목의 기간 조건이나 금액을 현재 치료 항목에 절대 옮겨 적지 마.
+                    예를 들어 틀니·브릿지·임플란트의 2년 이내/초과 조건을 영구치 발치보험금에 적용하면 안 돼.
                     
                     각 치료 항목은 면책기간 이내 금액과 면책기간 초과 금액을 모두 amounts 배열에 넣는다.
                     예: 가입 후 2년 이내 2.5만원, 2년 초과 5만원이면
@@ -580,6 +580,9 @@ public class AsyncPolicyAnalysisService {
                     {"condition": "2년 초과", "coverageAmount": 50000} 두 개를 넣는다.
                     
                     면책기간이 없는 항목은 amounts를 하나만 만들고 condition에는 "조건없음"이라고 작성해.
+                    특히 영구치 발치보험금은 해당 항목에 직접 표시된 기간 조건과 금액만 사용해.
+                    별도의 기간 조건이 표시되지 않았다면 condition은 "조건없음"으로 작성하고,
+                    같은 행이나 같은 지급사유 블록에서 확인한 영구치 1개당 금액을 coverageAmount에 넣어.
                     
                     금액 단위가 "원/개", "원/보철물당", "원/회"처럼 표시되어 있으면
                     coverageAmount에는 숫자만 원 단위로 넣고,
