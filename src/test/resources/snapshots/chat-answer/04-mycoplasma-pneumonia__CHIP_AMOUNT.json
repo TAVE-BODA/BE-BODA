@@ -1,0 +1,68 @@
+{
+  "request" : {
+    "message" : "마이코플라스마 폐렴",
+    "incidentType" : "DISEASE",
+    "treatmentTypes" : [ "HOSPITALIZATION", "OUTPATIENT" ],
+    "hospitalizationInfo" : {
+      "hospitalType" : "TERTIARY_HOSPITAL",
+      "roomType" : "PRIVATE_ROOM",
+      "hospitalizedNights" : 3
+    },
+    "treatmentStartDateType" : "EXACT_DATE",
+    "treatmentStartDate" : "2026-07-17",
+    "questionType" : "CHIP_AMOUNT"
+  },
+  "response" : {
+    "userMessage" : {
+      "senderType" : "USER",
+      "questionType" : "CHIP_AMOUNT",
+      "messageContent" : "마이코플라스마 폐렴\n\n[사용자 입력 조건]\n- 발생 상황: DISEASE\n- 받은 치료: HOSPITALIZATION, OUTPATIENT\n- 입원 정보: 병원 종류=TERTIARY_HOSPITAL, 병실=PRIVATE_ROOM, 입원 기간=3박\n- 치료 시작일: 2026-07-17",
+      "usedFallback" : false,
+      "disclaimerText" : null,
+      "hasSources" : false,
+      "documentGuide" : null,
+      "claimGuide" : null,
+      "amountGuide" : null
+    },
+    "aiMessage" : {
+      "senderType" : "AI",
+      "questionType" : "CHIP_AMOUNT",
+      "messageContent" : "[입원]\n예상 입원비 보험금은 약 400,000원이에요.\n\n입력하신 3박 4일을 입원일수 4일로 환산했어요.\n\n[계산 내역]\n- 상급병실 1인실(종합병원이상): 30,000원 × 4일 = 120,000원\n- 상급병실 1인실(상급종합병원): 70,000원 × 4일 = 280,000원\n- 합계: 400,000원\n\n\n[통원·외래]\n현재 증권 분석 결과에서 통원·실손 관련 보장을 확인하지 못했어요.\n\n다른 증권이나 별도의 실손의료보험 가입 여부를 확인해 주세요.\n\n\n[전체 합계]\n예상 보험금은 총 약 400,000원이에요.",
+      "usedFallback" : false,
+      "disclaimerText" : "실제 보험금 지급 여부는 보험사 심사 결과 및 약관에 따라 달라질 수 있습니다.",
+      "hasSources" : true,
+      "documentGuide" : null,
+      "claimGuide" : null,
+      "amountGuide" : {
+        "calculationAvailable" : true,
+        "estimatedItems" : [ {
+          "coverageName" : "상급병실 1인실(종합병원이상)",
+          "amountText" : "120,000원",
+          "reason" : "[입원] 1일당 30,000원 × 4일로 계산한 예상 금액이에요.",
+          "hasSources" : true,
+          "sourceChunkIds" : [ 620 ]
+        }, {
+          "coverageName" : "상급병실 1인실(상급종합병원)",
+          "amountText" : "280,000원",
+          "reason" : "[입원] 1일당 70,000원 × 4일로 계산한 예상 금액이에요.",
+          "hasSources" : true,
+          "sourceChunkIds" : [ 556 ]
+        } ],
+        "cautions" : [ "입력하신 3박 4일을 입원일수 4일로 환산했어요.", "실제 인정 입원일수는 입퇴원확인서와 보험사 심사 결과에 따라 달라질 수 있어요.", "현재 증권 분석 결과에서 통원비 또는 실손 보장 항목을 확인하지 못했어요.", "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요." ],
+        "hasSources" : true,
+        "sourceChunkIds" : [ 620, 556 ]
+      }
+    }
+  },
+  "sources" : {
+    "sourceStatus" : "AVAILABLE",
+    "notice" : "약관 근거를 확인했어요.",
+    "sources" : [ {
+      "chunkId" : 620,
+      "title" : "제2-2조(보험금의 지급사유)",
+      "citedText" : "제2-2조(보험금의 지급사유)에 해당하는 경우에 \n한하여 그에 따른 “상급병실(1인실)입원(종합병원이상) 보험금”을 지급합니다. \n③ ",
+      "clauseType" : "PAYMENT_REASON",
+      "relevanceScore" : null
+    } ]
+  }
+}

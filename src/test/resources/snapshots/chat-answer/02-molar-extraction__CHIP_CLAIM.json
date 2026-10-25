@@ -1,0 +1,63 @@
+{
+  "request" : {
+    "message" : "어금니 1개 발치",
+    "incidentType" : "DISEASE",
+    "treatmentTypes" : [ "OUTPATIENT", "DENTAL" ],
+    "dentalInfo" : {
+      "dentalTreatmentTypes" : [ "EXTRACTION" ],
+      "dentalTreatmentCountType" : "EXACT_COUNT",
+      "dentalTreatmentCount" : 1
+    },
+    "treatmentStartDateType" : "EXACT_DATE",
+    "treatmentStartDate" : "2026-07-06",
+    "questionType" : "CHIP_CLAIM"
+  },
+  "response" : {
+    "userMessage" : {
+      "senderType" : "USER",
+      "questionType" : "CHIP_CLAIM",
+      "messageContent" : "어금니 1개 발치\n\n[사용자 입력 조건]\n- 발생 상황: DISEASE\n- 받은 치료: OUTPATIENT, DENTAL\n- 치아 치료: [EXTRACTION]\n- 치료 치아 개수: 1개\n- 치료 시작일: 2026-07-06",
+      "usedFallback" : false,
+      "disclaimerText" : null,
+      "hasSources" : false,
+      "documentGuide" : null,
+      "claimGuide" : null,
+      "amountGuide" : null
+    },
+    "aiMessage" : {
+      "senderType" : "AI",
+      "questionType" : "CHIP_CLAIM",
+      "messageContent" : "청구 가능성이 있는 치아치료 보장이 있어요.\n\n가입하신 증권에서 입력하신 치아 치료와 관련된 보장 항목이 확인돼요.\n다만 실제 지급 여부는 치료 종류, 치료 개수, 약관상 조건에 따라 달라질 수 있어요.\n\n[확인된 보장]\n- 영구치발치보험금 - 개당: 1,600원\n",
+      "usedFallback" : false,
+      "disclaimerText" : "실제 보험금 지급 여부는 보험사 심사 결과 및 약관에 따라 달라질 수 있습니다.",
+      "hasSources" : true,
+      "documentGuide" : null,
+      "claimGuide" : {
+        "claimStatus" : "POSSIBLE",
+        "summary" : "치아 치료 보장의 청구 가능성이 있어요.",
+        "reasons" : [ "가입하신 증권에서 영구치발치보험금 - 개당 보장이 확인돼요.", "보장금액은 치아 1개당 1,600원이에요." ],
+        "cautions" : [ "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요.", "유치가 아닌 영구치 발치인지 확인이 필요해요." ],
+        "hasSources" : true,
+        "sourceChunkIds" : [ 1044, 1047 ]
+      },
+      "amountGuide" : null
+    }
+  },
+  "sources" : {
+    "sourceStatus" : "AVAILABLE",
+    "notice" : "약관 근거를 확인했어요.",
+    "sources" : [ {
+      "chunkId" : 1044,
+      "title" : "제2-2조(보험금의 지급사유)",
+      "citedText" : "제2-2조(보험금의 지급사유) 제1호 및 제4호에 해당하는 보험금 지급사유의 대상이 되는 “영구치 발치”의 \n원인은 보험기간 중 「",
+      "clauseType" : "PAYMENT_REASON",
+      "relevanceScore" : null
+    }, {
+      "chunkId" : 1047,
+      "title" : "보장 대상이 되지 않는 영구치 발치의 원인",
+      "citedText" : "제2-2조(보험금의 지급사유) 제1호 및 제4호에 해당하는 보험금 지급사유의 대상이 되지 않는 “영구치 발\n치”의 원인은 다음과 같습니다. \n1. 제3대구치(사랑니)를 발치하는 경우 \n2. 의치보철준비 \n「치아우식증(충치), 치주질환(잇몸질환) 또는 재해」가 발치의 직접적인 원인이 아니고, 치과치료를 위한 준비로서 \n영구치를 발치하는 경우 \n3. 치열교정준비 및 위치이상 \n부정치열을 교정하기 위하여 영구치를 발치하였거나 위치이상으로 심미적인 개선을 위해 발치하는 경우 \n4. 맹출장애 \n부분매복되거나, 완전매복되어 발치하는 경우 \n5. 「치아우식증(충치), 치주질환(잇몸질환) 또는 재해」이외의 기타 원인으로 발치하는 경우 \n6. 「최초계약의 치과치료보장개시일 전일 이전에 진단 확정된 치아우식증(충치), 치주질환(잇몸질환)」 또는 「최초계\n약의 계약일 전에 발생한 재해」를 원인으로 보험기간 중 영구치를 발치한 경우 \n< “보장의 대상이 되는 영구치 발치” 및 “보장의 대상이 되지 않는 영구치 발치” 예시> \n※ 계약일: 2019년 4월 1일, 피보험자 가입나이 40세, 최초계약  \n ←    보장제외기간     →  \n \n (90일)  \n               ↑                                ↑ \n계약일            \n(2019.4.1)     \n \n치과치료보장개시일 \n(2019.6.30) \n \n \n                       \n \n ① 2019.3.30 \n치아우식증(충치)진단 \n                 ",
+      "clauseType" : "PAYMENT_REASON",
+      "relevanceScore" : null
+    } ]
+  }
+}

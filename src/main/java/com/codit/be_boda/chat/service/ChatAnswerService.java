@@ -66,9 +66,7 @@ public class ChatAnswerService {
         // 채팅방에 연결된 증권 ID 목록 조회
         List<Long> analysisIds =
                 chatSessionPolicyRepository
-                        .findByChatSessionId(
-                                chatSession.getChatSessionId()
-                        )
+                        .findByChatSessionIdOrderByIdAsc(chatSession.getChatSessionId())
                         .stream()
                         .map(ChatSessionPolicy::getAnalysisId)
                         .toList();

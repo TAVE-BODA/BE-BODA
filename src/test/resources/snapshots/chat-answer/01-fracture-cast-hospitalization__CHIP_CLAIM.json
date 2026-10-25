@@ -1,0 +1,61 @@
+{
+  "request" : {
+    "message" : "자전거 사고로 오른쪽 경골이 골절되어 통깁스를 하고 상급종합병원 3인실에 1박 2일 입원했어요.",
+    "incidentType" : "INJURY",
+    "treatmentTypes" : [ "HOSPITALIZATION", "CAST", "OUTPATIENT" ],
+    "hospitalizationInfo" : {
+      "hospitalType" : "TERTIARY_HOSPITAL",
+      "roomType" : "TWO_THREE_ROOM",
+      "hospitalizedNights" : 1
+    },
+    "castInfo" : {
+      "castInjuryPartType" : "LIMBS",
+      "castType" : "FULL_CAST"
+    },
+    "treatmentStartDateType" : "EXACT_DATE",
+    "treatmentStartDate" : "2026-07-09",
+    "questionType" : "CHIP_CLAIM"
+  },
+  "response" : {
+    "userMessage" : {
+      "senderType" : "USER",
+      "questionType" : "CHIP_CLAIM",
+      "messageContent" : "자전거 사고로 오른쪽 경골이 골절되어 통깁스를 하고 상급종합병원 3인실에 1박 2일 입원했어요.\n\n[사용자 입력 조건]\n- 발생 상황: INJURY\n- 받은 치료: HOSPITALIZATION, CAST, OUTPATIENT\n- 입원 정보: 병원 종류=TERTIARY_HOSPITAL, 병실=TWO_THREE_ROOM, 입원 기간=1박\n- 깁스 정보: 부위=LIMBS, 깁스 방식=FULL_CAST\n- 치료 시작일: 2026-07-09",
+      "usedFallback" : false,
+      "disclaimerText" : null,
+      "hasSources" : false,
+      "documentGuide" : null,
+      "claimGuide" : null,
+      "amountGuide" : null
+    },
+    "aiMessage" : {
+      "senderType" : "AI",
+      "questionType" : "CHIP_CLAIM",
+      "messageContent" : "[입원]\n청구 가능성이 있어요.\n\n가입하신 증권에서 2·3인실 입원(종합병원이상) 보장이 확인돼요.\n입력하신 병원/병실 조건이 해당 보장 조건과 일치하면 청구 가능성이 있습니다.\n\n[확인된 보장]\n- 2·3인실 입원(종합병원이상): 계약일부터 1년 이내 1일당 10,000원\n\n\n[깁스·고정 치료]\n청구 가능성이 있어요.\n\n가입하신 증권에서 깁스 치료 보장이 확인돼요.\n입력하신 치료가 반깁스·부목이 아니라 정식 깁스라면 청구 가능성이 있습니다.\n\n[확인된 보장]\n- 깁스(Cast) 치료: 1회당 100,000원\n\n[주의사항]\n- 부목 제외\n- 동일한 원인으로 깁스 2회 이상 또는 동시에 서로 다른 신체부위 깁스 시 1회만 지급\n\n\n[통원·외래]\n현재 연결된 증권 분석 결과에서 통원·실손 관련 보장을 확인하지 못했어요.\n\n입력하신 치료 유형은 통원·외래 치료이지만, 현재 증권에서는 직접 매칭되는 통원비 또는 실손 보장 항목이 확인되지 않았어요.\n\n다른 증권이나 별도의 실손의료보험에 가입되어 있는지 확인해 주세요.\n정확한 보장 여부는 약관 또는 보험사를 통해 추가 확인이 필요할 수 있어요.",
+      "usedFallback" : false,
+      "disclaimerText" : "실제 보험금 지급 여부는 보험사 심사 결과 및 약관에 따라 달라질 수 있습니다.",
+      "hasSources" : true,
+      "documentGuide" : null,
+      "claimGuide" : {
+        "claimStatus" : "NEEDS_REVIEW",
+        "summary" : "치료별 청구 가능성이 달라 추가 확인이 필요해요.",
+        "reasons" : [ "[입원] 가입하신 증권의 2·3인실 입원(종합병원이상) 조건에 해당해 청구 가능성이 있어요.", "[입원] 입원 보장금액은 계약일부터 1년 이내 1일당 10,000원으로 확인돼요.", "[깁스·고정 치료] 가입하신 증권에서 깁스(Cast) 치료 보장이 확인돼요.", "[깁스·고정 치료] 입력하신 치료 방식은 정식 깁스예요.", "[깁스·고정 치료] 깁스 치료 시 100,000원의 보장금액이 확인됐어요.", "[통원·외래] 입력하신 치료 유형은 통원·외래 치료예요.", "[통원·외래] 현재 연결된 증권에서 직접 매칭되는 통원비 또는 실손 보장 항목이 확인되지 않았어요." ],
+        "cautions" : [ "부목 제외", "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요.", "실제 병원 및 병실 분류가 약관상 지급 조건과 일치해야 해요." ],
+        "hasSources" : true,
+        "sourceChunkIds" : [ 334, 336 ]
+      },
+      "amountGuide" : null
+    }
+  },
+  "sources" : {
+    "sourceStatus" : "AVAILABLE",
+    "notice" : "약관 근거를 확인했어요.",
+    "sources" : [ {
+      "chunkId" : 334,
+      "title" : "제2-2조(보험금의 지급사유)",
+      "citedText" : "제2-2조(보험금의 지급사유)에 해당하는 보험금 지급사유가 발생한 경우 회사는 계약일\n부터 1년 초과시에 지급하는 보험금의 50%를 지급합니다. 단, 그 입원이 퇴원없이 계속되어 입원기간 중 계약일부터 \n1년을 초과하는 경우에는, 계약일부터 1년을 초과한 날과 그 이후의 입원기간에 대해서는 「계약일부터 1년 초과시에 \n지급하는 보험금의 100%」를 지급합니다. 여기서 \"계약일부터 1년 이내\"란 계약일부터 1년이 되는 시점의 계약해당일 \n전일까지를 말합니다. \n설명 <",
+      "clauseType" : "DEFINITION",
+      "relevanceScore" : null
+    } ]
+  }
+}

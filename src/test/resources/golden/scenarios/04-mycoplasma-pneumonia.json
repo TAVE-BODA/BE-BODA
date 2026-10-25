@@ -1,0 +1,12 @@
+{
+  "message": "마이코플라스마 폐렴",
+  "incidentType": "DISEASE",
+  "treatmentTypes": ["HOSPITALIZATION", "OUTPATIENT"],
+  "hospitalizationInfo": {
+    "hospitalType": "TERTIARY_HOSPITAL",
+    "roomType": "PRIVATE_ROOM",
+    "hospitalizedNights": 3
+  },
+  "treatmentStartDateType": "EXACT_DATE",
+  "treatmentStartDate": "2026-07-17"
+}

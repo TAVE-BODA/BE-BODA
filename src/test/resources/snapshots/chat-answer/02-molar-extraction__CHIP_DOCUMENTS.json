@@ -1,0 +1,96 @@
+{
+  "request" : {
+    "message" : "어금니 1개 발치",
+    "incidentType" : "DISEASE",
+    "treatmentTypes" : [ "OUTPATIENT", "DENTAL" ],
+    "dentalInfo" : {
+      "dentalTreatmentTypes" : [ "EXTRACTION" ],
+      "dentalTreatmentCountType" : "EXACT_COUNT",
+      "dentalTreatmentCount" : 1
+    },
+    "treatmentStartDateType" : "EXACT_DATE",
+    "treatmentStartDate" : "2026-07-06",
+    "questionType" : "CHIP_DOCUMENTS"
+  },
+  "response" : {
+    "userMessage" : {
+      "senderType" : "USER",
+      "questionType" : "CHIP_DOCUMENTS",
+      "messageContent" : "어금니 1개 발치\n\n[사용자 입력 조건]\n- 발생 상황: DISEASE\n- 받은 치료: OUTPATIENT, DENTAL\n- 치아 치료: [EXTRACTION]\n- 치료 치아 개수: 1개\n- 치료 시작일: 2026-07-06",
+      "usedFallback" : false,
+      "disclaimerText" : null,
+      "hasSources" : false,
+      "documentGuide" : null,
+      "claimGuide" : null,
+      "amountGuide" : null
+    },
+    "aiMessage" : {
+      "senderType" : "AI",
+      "questionType" : "CHIP_DOCUMENTS",
+      "messageContent" : "필요서류 후보를 확인했어요.\n\n[필수 서류]\n- 청구서(회사양식)\n- 신분증\n- 치과치료 확인서\n- 치과진료기록\n- 영구치 발치 전후 X-ray 사진\n\n[추가 요청 가능 서류]\n- 구강 내 사진 또는 이에 준하는 판독 자료\n",
+      "usedFallback" : false,
+      "disclaimerText" : "실제 보험금 지급 여부는 보험사 심사 결과 및 약관에 따라 달라질 수 있습니다.",
+      "hasSources" : true,
+      "documentGuide" : {
+        "documents" : [ {
+          "name" : "청구서(회사양식)",
+          "description" : "보험사 양식에 맞춰 작성하는 보험금 청구서예요.",
+          "required" : true,
+          "hasSources" : true,
+          "sourceChunkIds" : [ 30 ]
+        }, {
+          "name" : "신분증",
+          "description" : "보험금 청구자 본인 확인을 위한 서류예요.",
+          "required" : true,
+          "hasSources" : true,
+          "sourceChunkIds" : [ 30 ]
+        }, {
+          "name" : "치과치료 확인서",
+          "description" : "치과 치료 종류와 치료 내용을 확인하기 위한 서류예요.",
+          "required" : true,
+          "hasSources" : true,
+          "sourceChunkIds" : [ 1082 ]
+        }, {
+          "name" : "치과진료기록",
+          "description" : "치과 치료 내역과 치료 경과를 확인하기 위한 서류예요.",
+          "required" : true,
+          "hasSources" : true,
+          "sourceChunkIds" : [ 1082 ]
+        }, {
+          "name" : "영구치 발치 전후 X-ray 사진",
+          "description" : "영구치 발치 전후의 치아 상태를 확인하기 위한 자료예요.",
+          "required" : true,
+          "hasSources" : true,
+          "sourceChunkIds" : [ 1082 ]
+        }, {
+          "name" : "구강 내 사진 또는 이에 준하는 판독 자료",
+          "description" : "보험사가 심사에 필요하다고 판단하는 경우 추가로 요청할 수 있어요.",
+          "required" : false,
+          "hasSources" : true,
+          "sourceChunkIds" : [ 1082 ]
+        } ],
+        "hasSources" : true,
+        "sourceChunkIds" : [ 30, 1082 ]
+      },
+      "claimGuide" : null,
+      "amountGuide" : null
+    }
+  },
+  "sources" : {
+    "sourceStatus" : "AVAILABLE",
+    "notice" : "약관 근거를 확인했어요.",
+    "sources" : [ {
+      "chunkId" : 30,
+      "title" : "사고보험금 청구서류 대표예시",
+      "citedText" : "문하거나, 담당컨설턴트/우편/FAX/인터넷 등을 통하여 청구를 할 수 있습니다. \n  \n ● 구비서류는 홈페이지(http://www.samsunglife.com) 또는 사고보험금 전용콜센터 \n      (☏ 1577-4118) 에서 관련 내용을 확인할 수 있습니다.  \n  \n ● 단, 우편/FAX/인터넷/모바일 접수의 경우 접수 가능 금액 등의 제한 사유가 있을 수 있으니 \n  청구 유형별로 세부내용을 확인하시기 바랍니다. \n  \n   \n  \n \n \n \n3. 보험계약의 일반사항 \n   \n \n< 사고보험금 청구서류 대표예시 > \n   \n 구분 진단서 \n입·퇴원 \n확인서 \n수술 \n확인서 \n통원 \n확인서 \n진단사실 \n확인서류 \n재해 \n입증서류 \n공통 \n 사망 \n● \n(사망진단서) \n    \n● \n(재해관련 \n보험금) \n청구서 \n신분증 \n 장해 \n● \n(장해진단서) \n    \n 진단 ●    \n● \n(검사결과지 등) \n 입원  ●    \n 수술   ●   \n 통원    ●  \n 실손  \n● \n(입원시) \n● \n(수술시) \n● \n(통원시) \n \n \n※ 위 표는 대표적인 예시만 나타낸 것으로 보험금 청구 전에 보험회사에 제출서류를 확인하시기 바랍니다.  \n \n \n2. 보험금 지급절차 \n     \n ● 회사는 보험금 청구서류를 접수한 때에는 아래와 같은 절차를 거쳐 보험금 지급을 심사합니다. \n  \n ● 보험금 지급기일은 청구서류 접수일부터 3 영업일 이내 입니다.  \n      다만, 보험금 지급사유의 ",
+      "clauseType" : "DEFINITION",
+      "relevanceScore" : null
+    }, {
+      "chunkId" : 1082,
+      "title" : "치과치료 관련 증명서",
+      "citedText" : "제1-4조(보험금 등의 청구) 제2호에서 말하는 이 특약의 사고증명서는 “장해진단서, 사망진단서, 해당 질병 진단서\n(병명기입) 또는 진료기록부 등”과 \"치과치료 관련 증명서\"를 말합니다. \n② 제1항의 \"치과치료 관련 증명서\"는 다음의 서류를 말합니다.  \n가. 아래 내용이 포함된 치과치료 확인서(회사양식) 및 치과진료기록 \n⑴ 치료한 치아(보철치료의 경우 발치한 영구치)의 명칭 및 위치 또는 치아번호 \n⑵ 해당 치아의 내원 당시의 치아상태 \n⑶ 직접적인 치료원인(보철치료의 경우 발치 원인) \n⑷ 치료받은 치과치료의 종류(보존치료의 경우 보존치료재료 및 치료치아면 포함) \n⑸ 치과 내원일, 진단확정일, 치료시작일(보철치료의 경우 발치일자) 및 치료종료(예정)일 \n⑹ 진단명 및 진단명에 해당하는 한국표준질병·사인분류번호 \n나. 영구치 발치 전후 및 치과치료 전후의 X-ray 사진 \n다. 회사가 상기 서류 이외에 보험금 심사에 필요하다고 인정하여 추가로 요청하는 구강 내 사진 또는 이에 준하는 \n판독 자료 \n③ 제1항의 사고증명서는 의료법 ",
+      "clauseType" : "DEFINITION",
+      "relevanceScore" : null
+    } ]
+  }
+}

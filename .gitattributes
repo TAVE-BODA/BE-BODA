@@ -1,3 +1,7 @@
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary
+
+# 회귀 테스트 픽스처/스냅샷은 줄바꿈 변환 없이 그대로 보관 (약관 원문 줄바꿈 보존)
+src/test/resources/fixtures/** -text
+src/test/resources/snapshots/** -text

@@ -220,10 +220,14 @@ public class ChatService {
     }
 
     @Transactional
-    public ChatMessagePairResponse sendMessage(Long chatSessionId, ChatMessageRequest request) {
+    public ChatMessagePairResponse sendMessage(Long chatSessionId, Long userId, ChatMessageRequest request) {
         chatMessageRequestValidator.validate(request);
-
         ChatSession chatSession = findChatSession(chatSessionId);
+
+        if (!chatSession.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.CHAT_SESSION_FORBIDDEN);
+        }
+
         QuestionType questionType = resolveQuestionType(request);
         // 첫 번째 질문이면 설문 데이터로 system_prompt 조립 후 저장
         // 이후 질문부터는 저장된 system_prompt 재사용 (설문 미전송)
@@ -279,8 +283,12 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public List<ChatMessageResponse> getMessages(Long chatSessionId) {
-        findChatSession(chatSessionId);
+    public List<ChatMessageResponse> getMessages(Long chatSessionId, Long userId) {
+        ChatSession chatSession = findChatSession(chatSessionId);
+
+        if (!chatSession.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.CHAT_SESSION_FORBIDDEN);
+        }
 
         List<ChatMessage> messages =
                 chatMessageRepository.findByChatSessionIdOrderByCreatedAtAsc(
@@ -318,7 +326,7 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
-    public ChatMessageSourceResponse getMessageSources(Long messageId) {
+    public ChatMessageSourceResponse getMessageSources(Long messageId, Long userId) {
         if (messageId == null) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "messageId는 필수입니다.");
         }
@@ -331,6 +339,10 @@ public class ChatService {
         }
 
         ChatSession chatSession = findChatSession(chatMessage.getChatSessionId());
+
+        if (!chatSession.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.CHAT_SESSION_FORBIDDEN);
+        }
 
         if (chatSession.getTermsDocumentId() == null) {
             return ChatMessageSourceResponse.termsNotUploaded(messageId);

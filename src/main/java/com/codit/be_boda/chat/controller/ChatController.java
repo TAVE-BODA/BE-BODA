@@ -111,9 +111,11 @@ public class ChatController {
     @PostMapping("/sessions/{chatSessionId}/messages")
     public ResponseEntity<ChatMessagePairResponse> sendMessage(
             @PathVariable Long chatSessionId,
-            @RequestBody ChatMessageRequest request
+            @RequestBody ChatMessageRequest request,
+            HttpSession session // 1. 로그인 정보 받기
     ) {
-        ChatMessagePairResponse response = chatService.sendMessage(chatSessionId, request);
+        Long userId = getUserId(session); // 2. 누구인지 꺼내기
+        ChatMessagePairResponse response = chatService.sendMessage(chatSessionId, userId, request); // 3. 같이 넘기기
         return ResponseEntity.ok(response);
     }
 
@@ -125,9 +127,12 @@ public class ChatController {
     @ApiResponse(responseCode = "404", description = "존재하지 않는 채팅방")
     @GetMapping("/sessions/{chatSessionId}/messages")
     public ResponseEntity<List<ChatMessageResponse>> getMessages(
-            @PathVariable Long chatSessionId
+            @PathVariable Long chatSessionId,
+            HttpSession session
     ) {
-        List<ChatMessageResponse> response = chatService.getMessages(chatSessionId);
+
+        Long userId = getUserId(session);
+        List<ChatMessageResponse> response = chatService.getMessages(chatSessionId, userId);
         return ResponseEntity.ok(response);
     }
 
@@ -140,9 +145,11 @@ public class ChatController {
     @ApiResponse(responseCode = "404", description = "존재하지 않는 메시지 또는 채팅방")
     @GetMapping("/messages/{messageId}/sources")
     public ResponseEntity<ChatMessageSourceResponse> getMessageSources(
-            @PathVariable Long messageId
+            @PathVariable Long messageId,
+            HttpSession session
     ) {
-        ChatMessageSourceResponse response = chatService.getMessageSources(messageId);
+        Long userId = getUserId(session);
+        ChatMessageSourceResponse response = chatService.getMessageSources(messageId, userId);
         return ResponseEntity.ok(response);
     }
 

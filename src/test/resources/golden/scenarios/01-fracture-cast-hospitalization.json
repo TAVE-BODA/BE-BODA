@@ -1,0 +1,16 @@
+{
+  "message": "자전거 사고로 오른쪽 경골이 골절되어 통깁스를 하고 상급종합병원 3인실에 1박 2일 입원했어요.",
+  "incidentType": "INJURY",
+  "treatmentTypes": ["HOSPITALIZATION", "CAST", "OUTPATIENT"],
+  "hospitalizationInfo": {
+    "hospitalType": "TERTIARY_HOSPITAL",
+    "roomType": "TWO_THREE_ROOM",
+    "hospitalizedNights": 1
+  },
+  "castInfo": {
+    "castInjuryPartType": "LIMBS",
+    "castType": "FULL_CAST"
+  },
+  "treatmentStartDateType": "EXACT_DATE",
+  "treatmentStartDate": "2026-07-09"
+}

@@ -1,0 +1,12 @@
+{
+  "message": "어금니 1개 발치",
+  "incidentType": "DISEASE",
+  "treatmentTypes": ["OUTPATIENT", "DENTAL"],
+  "dentalInfo": {
+    "dentalTreatmentTypes": ["EXTRACTION"],
+    "dentalTreatmentCountType": "EXACT_COUNT",
+    "dentalTreatmentCount": 1
+  },
+  "treatmentStartDateType": "EXACT_DATE",
+  "treatmentStartDate": "2026-07-06"
+}

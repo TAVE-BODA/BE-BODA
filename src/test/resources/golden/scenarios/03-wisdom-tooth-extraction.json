@@ -1,0 +1,12 @@
+{
+  "message": "오른쪽 아래 매복 사랑니 1개를 발치했어요.",
+  "incidentType": "DISEASE",
+  "treatmentTypes": ["DENTAL"],
+  "dentalInfo": {
+    "dentalTreatmentTypes": ["EXTRACTION"],
+    "dentalTreatmentCountType": "EXACT_COUNT",
+    "dentalTreatmentCount": 1
+  },
+  "treatmentStartDateType": "EXACT_DATE",
+  "treatmentStartDate": "2026-07-06"
+}

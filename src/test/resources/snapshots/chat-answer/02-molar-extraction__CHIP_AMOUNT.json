@@ -1,0 +1,62 @@
+{
+  "request" : {
+    "message" : "어금니 1개 발치",
+    "incidentType" : "DISEASE",
+    "treatmentTypes" : [ "OUTPATIENT", "DENTAL" ],
+    "dentalInfo" : {
+      "dentalTreatmentTypes" : [ "EXTRACTION" ],
+      "dentalTreatmentCountType" : "EXACT_COUNT",
+      "dentalTreatmentCount" : 1
+    },
+    "treatmentStartDateType" : "EXACT_DATE",
+    "treatmentStartDate" : "2026-07-06",
+    "questionType" : "CHIP_AMOUNT"
+  },
+  "response" : {
+    "userMessage" : {
+      "senderType" : "USER",
+      "questionType" : "CHIP_AMOUNT",
+      "messageContent" : "어금니 1개 발치\n\n[사용자 입력 조건]\n- 발생 상황: DISEASE\n- 받은 치료: OUTPATIENT, DENTAL\n- 치아 치료: [EXTRACTION]\n- 치료 치아 개수: 1개\n- 치료 시작일: 2026-07-06",
+      "usedFallback" : false,
+      "disclaimerText" : null,
+      "hasSources" : false,
+      "documentGuide" : null,
+      "claimGuide" : null,
+      "amountGuide" : null
+    },
+    "aiMessage" : {
+      "senderType" : "AI",
+      "questionType" : "CHIP_AMOUNT",
+      "messageContent" : "예상 치아치료 보험금은 약 1,600원이에요.\n\n[계산 내역]\n- 영구치발치보험금 - 개당: 1,600원\n\n선택하신 치료 개수 1개 기준으로 계산했어요.\n실제 지급 여부는 치료 종류와 약관상 조건에 따라 달라질 수 있어요.\n",
+      "usedFallback" : false,
+      "disclaimerText" : "실제 보험금 지급 여부는 보험사 심사 결과 및 약관에 따라 달라질 수 있습니다.",
+      "hasSources" : true,
+      "documentGuide" : null,
+      "claimGuide" : null,
+      "amountGuide" : {
+        "calculationAvailable" : true,
+        "estimatedItems" : [ {
+          "coverageName" : "영구치발치보험금 - 개당",
+          "amountText" : "1,600원",
+          "reason" : "1개 기준으로 계산한 예상 금액이에요.",
+          "hasSources" : true,
+          "sourceChunkIds" : [ 1104 ]
+        } ],
+        "cautions" : [ "실제 지급 여부는 보험사 심사 결과 및 약관 조건에 따라 달라질 수 있어요." ],
+        "hasSources" : true,
+        "sourceChunkIds" : [ 1104 ]
+      }
+    }
+  },
+  "sources" : {
+    "sourceStatus" : "AVAILABLE",
+    "notice" : "약관 근거를 확인했어요.",
+    "sources" : [ {
+      "chunkId" : 1104,
+      "title" : "제2-1조의11",
+      "citedText" : "제2-1조의11(보장의 대상이 되는 “영구치 발\n치”의 원인)에서 정한 보장의 대상이 되는 “영구치 발치”의 원인으로 영구치를 발치하고, 이 특약의 \n보험기간 중 해당 영구치를 발치한 부위에 보철치료를 받은 경우 \n지급금액 \n(기준: 특약보험가입금액) \n◇ 최초계약의 계약일부터 2년 초과  \n구 분  지급금액 보장한도 \n가철성의치(틀니)치료 \n5% \n(보철물당 지급) \n연간 1회 \n고정성가공의치(브릿지)치료 \n2% \n(영구치 발치 1개당 지급) \n한도 없음 \n임플란트치료 \n3% \n(영구치 발치 1개당 지급) \n한도 없음 \n \n◇ 최초계약의 계약일부터 2년 이내 \n구 분  지급금액 보장한도 \n가철성의치(틀니)치료 \n2.5%  \n(보철물당 지급) \n연간 1회 \n고정성가공의치(브릿지)치료 \n1.0% \n(영구치 발치 1개당 지급) \n연간 3개 \n(연간 발치한 영구치 개수 기준) \n임플란트치료 \n1.5% \n(영구치 발치 1개당 지급) \n연간 3개 \n(연간 발치한 영구치 개수 기준) \n     ㈜ 1. 최초계약의 계약일부터 2년 이내에 「보험기간 중 발생한 재해를 직접적인 원인으로 보험금 \n지급사유가 발생한 경우」의 지급금액은 “최초계약의 계약일부터 2년 초과”시와 동일하게 \n적용합니다. \n          2. 갱신계약의 지급금액 및 보장한도는 “최초계약의 계약일부터 2년 초과”시와 동일하게 적\n용합니다. \n \n  \n179\n \n⑵ 크라운치료보험금(약관 ",
+      "clauseType" : "PAYMENT_REASON",
+      "relevanceScore" : null
+    } ]
+  }
+}
